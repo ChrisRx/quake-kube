@@ -1,0 +1,10 @@
+[book]
+authors = ["Chris Marshall"]
+language = "en"
+multilingual = false
+src = "src"
+title = "The QuakeKube Book"
+
+[output.html]
+git-repository-url = "https://github.com/ChrisRx/quake-kube/tree/main"
+edit-url-template = "https://github.com/ChrisRx/quake-kube/edit/main/{path}"

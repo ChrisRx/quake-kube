@@ -1,0 +1,18 @@
+syntax = "proto3";
+package content.v1;
+option go_package = "github.com/ChrisRx/quake-kube/internal/quake/content/api/v1";
+
+message FileUploadRequest {
+    string name = 1;
+    bytes file = 2;
+}
+
+message FileUploadResponse {
+    string name = 1;
+    uint32 size = 2;
+    string message = 3;
+}
+
+service Assets {
+    rpc FileUpload(FileUploadRequest) returns (FileUploadResponse) {}
+}

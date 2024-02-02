@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quake
+spec:
+  selector:
+    matchLabels:
+      run: quake
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: quake
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8080'
+    spec:
+      containers:
+      - command:
+        - q3
+        - server
+        - --config=/config/config.yaml
+        - --content-server=http://127.0.0.1:9090
+        - --agree-eula
+        image: ghcr.io/chrisrx/quake-kube:latest
+        name: server
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        volumeMounts:
+        - name: quake3-server-config
+          mountPath: /config
+        - name: quake3-content
+          mountPath: /assets
+      - command:
+        - q3
+        - content
+        - --seed-content-url=http://content.quakejs.com
+        image: ghcr.io/chrisrx/quake-kube:latest
+        name: content-server
+        ports:
+        - containerPort: 9090
+        volumeMounts:
+        - name: quake3-content
+          mountPath: /assets
+      volumes:
+        - name: quake3-server-config
+          configMap:
+            name: quake3-server-config
+        - name: quake3-content
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quake
+spec:
+  type: NodePort
+  selector:
+    run: quake
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30001
+      name: client
+    - port: 27960
+      targetPort: 27960
+      nodePort: 30003
+      name: server
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30002
+      name: content
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quake3-server-config
+data:
+  config.yaml: |
+    fragLimit: 25
+    timeLimit: 15m
+    bot:
+      minPlayers: 3
+    game:
+      motd: "Welcome to Quake Kube"
+      type: FreeForAll
+      forceRespawn: false
+      inactivity: 10m
+      quadFactor: 3
+      weaponRespawn: 3
+    server:
+      hostname: "quakekube"
+      maxClients: 12
+      password: "changeme"
+    commands:
+      - addbot sarge 2
+    maps:
+    - name: q3dm7
+      type: FreeForAll
+      timeLimit: 10m
+    - name: q3dm17
+      type: FreeForAll
+    - name: q3wctf1
+      type: CaptureTheFlag
+      captureLimit: 8
+    - name: q3tourney2
+      type: Tournament
+    - name: q3wctf3
+      type: CaptureTheFlag
+      captureLimit: 8
+    - name: ztn3tourney1
+      type: Tournament

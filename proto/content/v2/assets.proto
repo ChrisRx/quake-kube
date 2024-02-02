@@ -1,0 +1,33 @@
+syntax = "proto3";
+package content.service.v2;
+option go_package = "github.com/ChrisRx/quake-kube/internal/quake/content/api/v2";
+
+import "google/protobuf/empty.proto";
+import "content/v1/assets.proto";
+
+message File {
+  string name = 1;
+  uint32 checksum = 2;
+  int64 compressed = 3;
+}
+
+message Manifest {
+  repeated File files = 1;
+}
+
+message FileUploadRequest {
+  string name = 1;
+  string game_name = 2;
+  bytes file = 3;
+}
+
+message FileUploadResponse {
+  string name = 1;
+  uint32 size = 2;
+  string message = 3;
+}
+
+service Assets {
+  rpc GetManifest(google.protobuf.Empty) returns (Manifest) {}
+  rpc FileUpload(FileUploadRequest) returns (FileUploadResponse) {}
+}
