@@ -9,16 +9,9 @@ spec:
   ports:
     - port: 8080
       targetPort: 8080
-      nodePort: 30001
+      nodePort: 30000
+      protocol: TCP
       name: client
-    - port: 27960
-      targetPort: 27960
-      nodePort: 30003
-      name: server
-    - port: 9090
-      targetPort: 9090
-      nodePort: 30002
-      name: content
   selector:
     {{- include "chart.selectorLabels" . | nindent 4 }}
-    run: quake-kube
+    app: quake-kube

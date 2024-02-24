@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -29,7 +30,11 @@ func NewCommand() *cobra.Command {
 				}
 				opts.ClientAddr = fmt.Sprintf("%s:8080", hostIPv4)
 			}
-			p, err := quakeclient.NewProxy(opts.ServerAddr)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			p, err := quakeclient.NewProxy(ctx, opts.ServerAddr)
 			if err != nil {
 				return err
 			}

@@ -8,6 +8,7 @@ replace k8s.io/apimachinery => k8s.io/apimachinery v0.29.1
 require (
 	github.com/google/go-cmp v0.6.0
 	github.com/gorilla/websocket v1.5.1
+	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/labstack/echo/v4 v4.11.4
 	github.com/prometheus/client_golang v1.18.0
 	github.com/soheilhy/cmux v0.1.5

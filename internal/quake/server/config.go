@@ -3,13 +3,57 @@ package server
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
 )
+
+func ReadConfigFromFile(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg := Default()
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+type Config struct {
+	FragLimit int             `name:"fraglimit"`
+	TimeLimit metav1.Duration `name:"timelimit"`
+
+	BotConfig        `json:"bot"`
+	GameConfig       `json:"game"`
+	FileServerConfig `json:"fs"`
+	ServerConfig     `json:"server"`
+	Commands         []string `json:"commands"`
+
+	Maps
+}
+
+type BotConfig struct {
+	MinPlayers int  `name:"bot_minplayers"`
+	NoChat     bool `name:"bot_nochat"`
+}
+
+type GameConfig struct {
+	ForceRespawn      bool            `name:"g_forcerespawn"`
+	GameType          GameType        `name:"g_gametype"      json:"type"`
+	Inactivity        metav1.Duration `name:"g_inactivity"`
+	Log               string          `name:"g_log"`
+	MOTD              string          `name:"g_motd"`
+	Password          string          `name:"g_password"`
+	QuadFactor        int             `name:"g_quadfactor"`
+	SinglePlayerSkill int             `name:"g_spSkill"`
+	WeaponRespawn     int             `name:"g_weaponrespawn"`
+}
 
 type GameType int
 
@@ -54,36 +98,6 @@ func (gt *GameType) UnmarshalText(data []byte) error {
 		return fmt.Errorf("unknown GameType: %s", data)
 	}
 	return nil
-}
-
-type Config struct {
-	FragLimit int             `name:"fraglimit"`
-	TimeLimit metav1.Duration `name:"timelimit"`
-
-	BotConfig        `json:"bot"`
-	GameConfig       `json:"game"`
-	FileServerConfig `json:"fs"`
-	ServerConfig     `json:"server"`
-	Commands         []string `json:"commands"`
-
-	Maps
-}
-
-type BotConfig struct {
-	MinPlayers int  `name:"bot_minplayers"`
-	NoChat     bool `name:"bot_nochat"`
-}
-
-type GameConfig struct {
-	ForceRespawn      bool            `name:"g_forcerespawn"`
-	GameType          GameType        `name:"g_gametype"      json:"type"`
-	Inactivity        metav1.Duration `name:"g_inactivity"`
-	Log               string          `name:"g_log"`
-	MOTD              string          `name:"g_motd"`
-	Password          string          `name:"g_password"`
-	QuadFactor        int             `name:"g_quadfactor"`
-	SinglePlayerSkill int             `name:"g_spSkill"`
-	WeaponRespawn     int             `name:"g_weaponrespawn"`
 }
 
 type FileServerConfig struct {

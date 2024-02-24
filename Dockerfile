@@ -31,10 +31,13 @@ COPY pkg pkg/
 # RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on taskset -c 1 /usr/local/go/bin/go build -a -o q3 ./cmd/q3
 RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on go build -a -o q3 ./cmd/q3
 
+RUN CGO_ENABLED=0 go install github.com/grpc-ecosystem/grpc-health-probe@latest
+
 FROM alpine:3
 
 COPY --from=builder /workspace/q3 /usr/local/bin
+COPY --from=builder /go/bin/grpc-health-probe /usr/local/bin/grpc-health-probe
 COPY --from=quake-n-bake /usr/local/bin/ioq3ded /usr/local/bin
 COPY --from=quake-n-bake /lib/ld-musl-*.so.1 /lib
 
-ENTRYPOINT ["/usr/local/bin/q3"]
+CMD ["/usr/local/bin/q3", "/usr/local/bin/grpc-health-probe"]
