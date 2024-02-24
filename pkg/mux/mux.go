@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"net"
+	"sync"
 
 	"github.com/soheilhy/cmux"
 )
@@ -19,6 +21,7 @@ type Mux struct {
 	cmux.CMux
 
 	conns []*registerConn
+	wg    sync.WaitGroup
 }
 
 // New
@@ -39,53 +42,77 @@ func (m *Mux) Register(conn Connection) *registerConn {
 	return r
 }
 
+func (m *Mux) startConns() error {
+	for _, c := range m.conns {
+		if c.l == nil {
+			return fmt.Errorf("match not defined for connection: %T\n", c.conn)
+		}
+		m.wg.Add(1)
+		go func(c *registerConn) {
+			defer m.wg.Done()
+
+			if err := c.conn.Serve(c.l); err != nil && err != cmux.ErrListenerClosed {
+				log.Println(err)
+			}
+		}(c)
+	}
+	return nil
+}
+
 // Serve
 func (m *Mux) Serve() error {
-	for _, conn := range m.conns {
-		if !conn.started {
-			panic(fmt.Errorf("match not defined for connection: %T\n", conn.conn))
-		}
+	if err := m.startConns(); err != nil {
+		return err
 	}
 	return m.CMux.Serve()
+}
+
+func (m *Mux) ServeAndWait() error {
+	if err := m.startConns(); err != nil {
+		return err
+	}
+
+	go func() {
+		if err := m.CMux.Serve(); err != nil {
+			log.Printf("Serve: %v\n", err)
+		}
+	}()
+
+	m.wg.Wait()
+	return nil
 }
 
 type registerConn struct {
 	*Mux
 
-	conn    Connection
-	started bool
+	conn Connection
+	l    net.Listener
 }
 
 func (r *registerConn) Match(matches ...any) {
 	if len(matches) == 0 {
 		return
 	}
+	if r.l != nil {
+		panic(fmt.Errorf("cannot call Match multiple times"))
+	}
 
-	var l net.Listener
 	switch matches[0].(type) {
 	case cmux.Matcher:
 		ms := make([]cmux.Matcher, len(matches))
 		for i := range matches {
 			ms[i] = matches[i].(cmux.Matcher)
 		}
-		l = r.Mux.Match(ms...)
+		r.l = r.Mux.Match(ms...)
 	case cmux.MatchWriter:
 		ms := make([]cmux.MatchWriter, len(matches))
 		for i := range matches {
 			ms[i] = matches[i].(cmux.MatchWriter)
 		}
-		l = r.MatchWithWriters(ms...)
+		r.l = r.MatchWithWriters(ms...)
 	default:
 		panic(fmt.Errorf("expected cmux.Matcher | cmux.MatchWriter, received %T", matches[0]))
 	}
-
-	go func() {
-		if err := r.conn.Serve(l); err != cmux.ErrListenerClosed {
-			panic(err)
-		}
-	}()
-
-	r.started = true
 }
 
 func (r *registerConn) Any() {

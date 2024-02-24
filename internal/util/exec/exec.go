@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"os/exec"
+	"syscall"
 )
 
 type Cmd struct {
@@ -16,6 +17,7 @@ func (cmd *Cmd) Restart(ctx context.Context) error {
 		}
 	}
 	newCmd := exec.CommandContext(ctx, cmd.Args[0], cmd.Args[1:]...)
+	newCmd.SysProcAttr = cmd.SysProcAttr
 	newCmd.Dir = cmd.Dir
 	newCmd.Env = cmd.Env
 	newCmd.Stdin = cmd.Stdin
@@ -26,5 +28,9 @@ func (cmd *Cmd) Restart(ctx context.Context) error {
 }
 
 func CommandContext(ctx context.Context, name string, args ...string) *Cmd {
-	return &Cmd{Cmd: exec.CommandContext(ctx, name, args...)}
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+	return &Cmd{Cmd: cmd}
 }

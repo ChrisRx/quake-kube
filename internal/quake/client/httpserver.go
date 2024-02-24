@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"html/template"
 	"io"
 	"net"
@@ -11,7 +12,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/soheilhy/cmux"
 
 	quakenet "github.com/ChrisRx/quake-kube/pkg/quake/net"
 )
@@ -22,11 +22,13 @@ type Config struct {
 }
 
 type HTTPClientServer struct {
+	*echo.Echo
+
+	ctx context.Context
 	cfg *Config
-	e   *echo.Echo
 }
 
-func NewHTTPClientServer(cfg *Config) (*HTTPClientServer, error) {
+func NewHTTPClientServer(ctx context.Context, cfg *Config) (*HTTPClientServer, error) {
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -66,6 +68,16 @@ func NewHTTPClientServer(cfg *Config) (*HTTPClientServer, error) {
 		})
 	})
 
+	e.GET("/health", func(c echo.Context) error {
+		if _, err := quakenet.SendCommandWithTimeout(
+			cfg.ServerAddr,
+			quakenet.GetStatusCommand,
+			1*time.Second,
+		); err != nil {
+			return c.JSON(http.StatusServiceUnavailable, err.Error())
+		}
+		return c.JSON(http.StatusOK, "OK")
+	})
 	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 
 	e.GET("/info", func(c echo.Context) error {
@@ -101,25 +113,35 @@ func NewHTTPClientServer(cfg *Config) (*HTTPClientServer, error) {
 		Transport: &HostHeaderTransport{RoundTripper: http.DefaultTransport, Host: csurl.Host},
 	}))
 	return &HTTPClientServer{
-		cfg: cfg,
-		e:   e,
+		Echo: e,
+		ctx:  ctx,
+		cfg:  cfg,
 	}, nil
-}
-
-func (h *HTTPClientServer) Match() []cmux.Matcher {
-	return []cmux.Matcher{
-		cmux.Any(),
-	}
 }
 
 func (h *HTTPClientServer) Serve(l net.Listener) error {
 	s := &http.Server{
-		Handler:        h.e,
+		Handler:        h,
 		ReadTimeout:    5 * time.Minute,
 		WriteTimeout:   5 * time.Minute,
 		MaxHeaderBytes: 1 << 20,
 	}
-	return s.Serve(l)
+
+	errch := make(chan error, 1)
+	go func() {
+		defer close(errch)
+
+		if err := s.Serve(l); err != nil {
+			errch <- err
+		}
+	}()
+
+	select {
+	case err := <-errch:
+		return err
+	case <-h.ctx.Done():
+		return h.Shutdown(h.ctx)
+	}
 }
 
 type HostHeaderTransport struct {
