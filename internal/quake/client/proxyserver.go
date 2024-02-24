@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/soheilhy/cmux"
 )
 
 var DefaultUpgrader = &websocket.Upgrader{
@@ -25,10 +24,11 @@ var DefaultUpgrader = &websocket.Upgrader{
 type WebsocketUDPProxy struct {
 	Upgrader *websocket.Upgrader
 
+	ctx  context.Context
 	addr net.Addr
 }
 
-func NewProxy(addr string) (*WebsocketUDPProxy, error) {
+func NewProxy(ctx context.Context, addr string) (*WebsocketUDPProxy, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -42,20 +42,29 @@ func NewProxy(addr string) (*WebsocketUDPProxy, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &WebsocketUDPProxy{addr: raddr}, nil
-}
-
-func (w *WebsocketUDPProxy) Match() []cmux.Matcher {
-	return []cmux.Matcher{
-		cmux.HTTP1HeaderField("Upgrade", "websocket"),
-	}
+	return &WebsocketUDPProxy{ctx: ctx, addr: raddr}, nil
 }
 
 func (w *WebsocketUDPProxy) Serve(l net.Listener) error {
 	s := &http.Server{
 		Handler: w,
 	}
-	return s.Serve(l)
+
+	errch := make(chan error, 1)
+	go func() {
+		defer close(errch)
+
+		if err := s.Serve(l); err != nil {
+			errch <- err
+		}
+	}()
+
+	select {
+	case err := <-errch:
+		return err
+	case <-w.ctx.Done():
+		return s.Close()
+	}
 }
 
 func (w *WebsocketUDPProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {

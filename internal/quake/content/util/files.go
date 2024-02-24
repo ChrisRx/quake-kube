@@ -76,11 +76,12 @@ func DownloadAssets(u *url.URL, dir string) error {
 		if err := os.WriteFile(path, data, 0644); err != nil {
 			return err
 		}
+		fmt.Printf("Downloaded %s\n", f.Name)
 
 		// The demo and point releases are compressed gzip files and contain the
 		// base pak files needed to play the Quake 3 Arena demo.
 		if strings.HasPrefix(f.Name, "linuxq3ademo") || strings.HasPrefix(f.Name, "linuxq3apoint") {
-			if err := extractGzip(path, dir); err != nil {
+			if err := ExtractGzip(path, dir); err != nil {
 				return err
 			}
 		}
@@ -90,8 +91,8 @@ func DownloadAssets(u *url.URL, dir string) error {
 
 var gzipMagicHeader = []byte{'\x1f', '\x8b'}
 
-// extractGzip
-func extractGzip(path, dir string) error {
+// ExtractGzip
+func ExtractGzip(path, dir string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -120,8 +121,8 @@ func extractGzip(path, dir string) error {
 		if err != nil {
 			return err
 		}
-		if strings.HasSuffix(hdr.Name, ".pk3") {
-			fmt.Printf("Downloaded %s\n", hdr.Name)
+		if strings.HasSuffix(hdr.Name, ".pk3") || strings.HasSuffix(hdr.Name, ".txt") || hdr.Name == "README" {
+			fmt.Printf("Extracted %s\n", hdr.Name)
 			data, err := io.ReadAll(tr)
 			if err != nil {
 				return err

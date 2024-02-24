@@ -1,6 +1,7 @@
 package content
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 
 var opts struct {
 	Addr           string
+	ServerAddr     string
 	AssetsDir      string
 	SeedContentURL string
 }
@@ -50,16 +52,21 @@ func NewCommand() *cobra.Command {
 				}
 			}
 
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
 			m := mux.New(must.Must(net.Listen("tcp", opts.Addr)))
-			m.Register(quakecontent.NewRPCServer(opts.AssetsDir)).
+			m.Register(quakecontent.NewRPCServer(ctx, opts.AssetsDir, opts.ServerAddr)).
 				Match(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"))
-			m.Register(quakecontent.NewHTTPContentServer(opts.AssetsDir)).
+			m.Register(quakecontent.NewHTTPContentServer(ctx, opts.AssetsDir)).
 				Any()
 			fmt.Printf("Starting server %s\n", opts.Addr)
 			return m.Serve()
 		},
 	}
 	cmd.Flags().StringVarP(&opts.Addr, "addr", "a", ":9090", "address <host>:<port>")
+	cmd.Flags().
+		StringVar(&opts.ServerAddr, "server-addr", "", "(optional) dedicated server <host>:<port>")
 	cmd.Flags().StringVarP(&opts.AssetsDir, "assets-dir", "d", "assets", "assets directory")
 	cmd.Flags().StringVar(&opts.SeedContentURL, "seed-content-url", "", "seed content from another content server")
 	return cmd

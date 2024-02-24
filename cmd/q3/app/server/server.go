@@ -73,9 +73,9 @@ func NewCommand() *cobra.Command {
 			}()
 
 			m := mux.New(must.Must(net.Listen("tcp", opts.ClientAddr)))
-			m.Register(must.Must(quakeclient.NewProxy(opts.ServerAddr))).
+			m.Register(must.Must(quakeclient.NewProxy(ctx, opts.ServerAddr))).
 				Match(cmux.HTTP1HeaderField("Upgrade", "websocket"))
-			m.Register(must.Must(quakeclient.NewHTTPClientServer(&quakeclient.Config{
+			m.Register(must.Must(quakeclient.NewHTTPClientServer(ctx, &quakeclient.Config{
 				ContentServerURL: opts.ContentServer,
 				ServerAddr:       opts.ServerAddr,
 			}))).

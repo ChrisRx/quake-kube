@@ -2,16 +2,20 @@ package server
 
 import (
 	"context"
+	_ "embed"
+	"fmt"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/hako/durafmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"sigs.k8s.io/yaml"
 
+	"github.com/ChrisRx/quake-kube/internal/run"
 	"github.com/ChrisRx/quake-kube/internal/util/exec"
 	quakenet "github.com/ChrisRx/quake-kube/pkg/quake/net"
 )
@@ -39,10 +43,11 @@ var (
 )
 
 type Server struct {
+	Addr          string
+	ConfigFile    string
 	Dir           string
 	WatchInterval time.Duration
-	ConfigFile    string
-	Addr          string
+	ShutdownDelay time.Duration
 }
 
 func (s *Server) Start(ctx context.Context) error {
@@ -54,7 +59,10 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 	args := []string{
-		"+set", "dedicated", "1",
+		"+set", "dedicated", "2",
+		"+set", "sv_master1", "", // master.ioquake3.org
+		"+set", "sv_master2", "", // master.quake3arena..com
+		"+set", "sv_master3", "", // localhost:27950
 		"+set", "net_ip", host,
 		"+set", "net_port", port,
 		"+set", "fs_homepath", s.Dir,
@@ -64,7 +72,7 @@ func (s *Server) Start(ctx context.Context) error {
 		"+set", "com_gamename", "Quake3Arena",
 		"+exec", "server.cfg",
 	}
-	cmd := exec.CommandContext(ctx, "ioq3ded", args...)
+	cmd := exec.CommandContext(context.Background(), "ioq3ded", args...)
 	cmd.Dir = s.Dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -131,6 +139,14 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 
+	defer func() {
+		if cmd.Process != nil {
+			if err := cmd.Process.Kill(); err != nil {
+				log.Printf("couldn't kill process: %v\n", err)
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-ch:
@@ -147,21 +163,70 @@ func (s *Server) Start(ctx context.Context) error {
 				}
 			}()
 		case <-ctx.Done():
+			s.GracefulStop()
 			return ctx.Err()
 		}
 	}
 }
 
+func (s *Server) GracefulStop() {
+	if s.ShutdownDelay == 0 {
+		return
+	}
+	cfg, err := ReadConfigFromFile(s.ConfigFile)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	msg := fmt.Sprintf("say SERVER WILL BE SHUTTING DOWN IN %s", strings.ToUpper(durafmt.Parse(s.ShutdownDelay).String()))
+	if _, err := quakenet.SendServerCommand(s.Addr, cfg.ServerConfig.Password, msg); err != nil {
+		log.Printf("say: %v\n", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.ShutdownDelay)
+	defer cancel()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	countdown := int(s.ShutdownDelay.Seconds()) - 1
+	for {
+		select {
+		case <-ticker.C:
+			countdown--
+			if countdown == 0 {
+				return
+			}
+			if _, err := quakenet.SendServerCommand(s.Addr, cfg.ServerConfig.Password, fmt.Sprintf("say %d\n", countdown)); err != nil {
+				log.Printf("countdown: %v\n", err)
+			}
+		case <-ctx.Done():
+			if _, err := quakenet.SendServerCommand(s.Addr, cfg.ServerConfig.Password, "say GOODBYE"); err != nil {
+				log.Printf("goodbye: %v\n", err)
+			}
+			status, err := quakenet.GetStatus(s.Addr)
+			if err != nil {
+				log.Printf("getstatus: %v\n", err)
+				return
+			}
+			for _, player := range status.Players {
+				if _, err := quakenet.SendServerCommand(s.Addr, cfg.ServerConfig.Password, fmt.Sprintf("kick %s", player.Name)); err != nil {
+					log.Printf("kick: %v\n", err)
+				}
+			}
+			time.Sleep(1 * time.Second)
+			return
+		}
+	}
+}
+
 func (s *Server) reload() error {
-	data, err := os.ReadFile(s.ConfigFile)
+	cfg, err := ReadConfigFromFile(s.ConfigFile)
 	if err != nil {
 		return err
 	}
-	cfg := Default()
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return err
-	}
-	data, err = cfg.Marshal()
+	data, err := cfg.Marshal()
 	if err != nil {
 		return err
 	}
@@ -179,23 +244,13 @@ func (s *Server) watch(ctx context.Context) (<-chan struct{}, error) {
 
 	ch := make(chan struct{})
 
-	go func() {
-		ticker := time.NewTicker(s.WatchInterval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				if fi, err := os.Stat(s.ConfigFile); err == nil {
-					if fi.ModTime().After(cur.ModTime()) {
-						ch <- struct{}{}
-					}
-					cur = fi
-				}
-			case <-ctx.Done():
-				return
+	go run.Until(func() {
+		if fi, err := os.Stat(s.ConfigFile); err == nil {
+			if fi.ModTime().After(cur.ModTime()) {
+				ch <- struct{}{}
 			}
+			cur = fi
 		}
-	}()
+	}, ctx.Done(), s.WatchInterval)
 	return ch, nil
 }

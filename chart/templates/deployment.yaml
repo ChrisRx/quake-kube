@@ -9,7 +9,11 @@ spec:
   selector:
     matchLabels:
       {{- include "chart.selectorLabels" . | nindent 6 }}
-    run: quake-kube
+    app: quake-kube
+  strategy:
+    rollingUpdate:
+      # This should be set to 0 if we only have 1 replica defined
+      maxUnavailable: 0
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -21,6 +25,8 @@ spec:
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        version: "2"
+        app: quake-kube
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -29,56 +35,40 @@ spec:
       serviceAccountName: {{ include "chart.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 180
       containers:
-        # - name: {{ .Chart.Name }}
         - name: server
           command:
             - q3
-            - server
+            - run
             - --config=/config/config.yaml
-            - --content-server=http://127.0.0.1:9090
             - --agree-eula
-          securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          ports:
-            - containerPort: 8080
-          # livenessProbe:
-          #   httpGet:
-          #     path: /
-          #     port: http
-          readinessProbe:
-            tcpSocket:
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 5
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-          {{- with .Values.volumeMounts }}
-          volumeMounts:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-        - name: content-server
-          command:
-            - q3
-            - content
+            - --shutdown-delay=10s
             - --seed-content-url=http://content.quakejs.com
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: 9090
-          # livenessProbe:
-          #   httpGet:
-          #     path: /
-          #     port: http
-          # readinessProbe:
-          #   tcpSocket:
-          #     port: 8080
-          #   initialDelaySeconds: 15
-          #   periodSeconds: 5
+            - containerPort: 8080
+          livenessProbe:
+            exec:
+              command:
+                - grpc-health-probe
+                - -addr=localhost:8080
+            initialDelaySeconds: 30
+            failureThreshold: 1
+            successThreshold: 1
+            periodSeconds: 10 # this is 3 times the period on readinessProbe
+          readinessProbe:
+            exec:
+              command:
+                - grpc-health-probe
+                - -addr=localhost:8080
+            initialDelaySeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+            periodSeconds: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- with .Values.volumeMounts }}

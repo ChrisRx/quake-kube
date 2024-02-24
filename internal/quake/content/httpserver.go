@@ -1,6 +1,7 @@
 package content
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"os"
@@ -10,18 +11,18 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/soheilhy/cmux"
 
 	contentutil "github.com/ChrisRx/quake-kube/internal/quake/content/util"
 )
 
 type HTTPServer struct {
-	e *echo.Echo
+	*echo.Echo
 
+	ctx       context.Context
 	assetsDir string
 }
 
-func NewHTTPContentServer(assetsDir string) *HTTPServer {
+func NewHTTPContentServer(ctx context.Context, assetsDir string) *HTTPServer {
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -52,25 +53,35 @@ func NewHTTPContentServer(assetsDir string) *HTTPServer {
 		return c.JSONPretty(http.StatusOK, maps, "    ")
 	})
 	return &HTTPServer{
-		e:         e,
+		Echo:      e,
+		ctx:       ctx,
 		assetsDir: assetsDir,
-	}
-}
-
-func (h *HTTPServer) Match() []cmux.Matcher {
-	return []cmux.Matcher{
-		cmux.Any(),
 	}
 }
 
 func (h *HTTPServer) Serve(l net.Listener) error {
 	s := &http.Server{
-		Handler:        h.e,
+		Handler:        h,
 		ReadTimeout:    5 * time.Minute,
 		WriteTimeout:   5 * time.Minute,
 		MaxHeaderBytes: 1 << 20,
 	}
-	return s.Serve(l)
+
+	errch := make(chan error, 1)
+	go func() {
+		defer close(errch)
+
+		if err := s.Serve(l); err != nil {
+			errch <- err
+		}
+	}()
+
+	select {
+	case err := <-errch:
+		return err
+	case <-h.ctx.Done():
+		return h.Shutdown(h.ctx)
+	}
 }
 
 // trimAssetName returns a path string that has been prefixed with a crc32

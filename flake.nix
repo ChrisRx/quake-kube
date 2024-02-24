@@ -33,15 +33,48 @@
               inherit system;
             };
 
+
           # The current default sdk for macOS fails to compile go projects, so we use a newer one for now.
           # This has no effect on other platforms.
           callPackage = pkgs.darwin.apple_sdk_11_0.callPackage or pkgs.callPackage;
         in
         rec {
+          packages.grpc_health_probe = pkgs.buildGoModule rec {
+            pname = "grpc-health-probe";
+            version = "0.4.24";
+
+            src = pkgs.fetchFromGitHub {
+              owner = "grpc-ecosystem";
+              repo = "grpc-health-probe";
+              rev = "v${version}";
+              sha256 = "sha256-OZ6vfRYO75kaDVrs/HTZCAPuJyoXOk/p4t85JrLrPwQ=";
+            };
+
+            ldflags = [
+              "-s"
+              "-w"
+              "-X main.versionTag=v${version}"
+            ];
+
+            vendorHash = "sha256-4EJBhdHIRLMHCHThwBItF8ZWVJwU+/enq0AkRcP2Wk4=";
+
+            nativeCheckInputs = with pkgs; [
+            ];
+
+            checkPhase = '''';
+
+            meta = with pkgs.lib; {
+              description = "A command-line tool to perform health-checks for gRPC applications in Kubernetes and elsewhere";
+              homepage = "https://github.com/grpc-ecosystem/grpc-health-probe";
+              license = licenses.asl20;
+              mainProgram = "grpc-health-probe";
+            };
+          };
           packages.default = pkgs.buildEnv {
             name = "quake-kube";
             paths = with pkgs; [
               packages.q3
+              packages.grpc_health_probe
               ioquake3
             ];
           };
@@ -60,6 +93,7 @@
             created = "now";
             contents = [
               packages.default
+              packages.grpc_health_probe
               pkgs.ioquake3
             ];
             config.Cmd = [ "${packages.default}/bin/q3" ];
@@ -85,6 +119,7 @@
                 terraform
                 ioquake3
                 skopeo
+                packages.grpc_health_probe
               ];
             };
         })

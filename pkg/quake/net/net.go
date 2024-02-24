@@ -15,6 +15,13 @@ const (
 )
 
 func SendCommand(addr, cmd string) ([]byte, error) {
+	return SendCommandWithTimeout(addr, cmd, 5*time.Second)
+}
+
+func SendCommandWithTimeout(addr, cmd string, timeout time.Duration) ([]byte, error) {
+	if timeout == 0 {
+		timeout = 5 * time.Second
+	}
 	raddr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
 		return nil, err
@@ -26,18 +33,21 @@ func SendCommand(addr, cmd string) ([]byte, error) {
 	defer conn.Close()
 
 	buffer := make([]byte, 1024*1024)
-	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
 		return nil, err
 	}
-	n, err := conn.WriteTo([]byte(fmt.Sprintf("%s%s", OutOfBandHeader, cmd)), raddr)
-	if err != nil {
+	if _, err := conn.WriteTo([]byte(fmt.Sprintf("%s%s", OutOfBandHeader, cmd)), raddr); err != nil {
 		return nil, err
 	}
-	n, _, err = conn.ReadFrom(buffer)
+	n, _, err := conn.ReadFrom(buffer)
 	if err != nil {
 		return nil, err
 	}
 	return buffer[:n], nil
+}
+
+func SendServerCommand(addr, password, cmd string) ([]byte, error) {
+	return SendCommand(addr, fmt.Sprintf("rcon %s %s", password, cmd))
 }
 
 func parseMap(data []byte) map[string]string {
