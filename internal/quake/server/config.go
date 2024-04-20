@@ -123,6 +123,7 @@ type ServerConfig struct {
 	Hostname      string `name:"sv_hostname"`
 	MaxClients    int    `name:"sv_maxclients"`
 	Password      string `name:"rconpassword"`
+	ListServer    string `name:"sv_master1"`
 }
 
 func (c *Config) Marshal() ([]byte, error) {
