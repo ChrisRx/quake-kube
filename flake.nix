@@ -6,8 +6,10 @@
   inputs.gomod2nix.url = "github:nix-community/gomod2nix";
   inputs.gomod2nix.inputs.nixpkgs.follows = "nixpkgs";
   inputs.gomod2nix.inputs.flake-utils.follows = "flake-utils";
+  inputs.flocken.url = "github:mirkolenz/flocken/v2";
+  inputs.flocken.inputs.nixpkgs.follows = "nixpkgs";
 
-  outputs = { self, nixpkgs, flake-utils, gomod2nix }:
+  outputs = { self, nixpkgs, flake-utils, gomod2nix, flocken }:
     (flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ]
       (system:
         let
@@ -97,6 +99,15 @@
               pkgs.ioquake3
             ];
             config.Cmd = [ "${packages.default}/bin/q3" ];
+          };
+          legacyPackages.dockerManifest = flocken.legacyPackages.${system}.mkDockerManifest {
+            github = {
+              enable = true;
+              repo = "chrisrx/quake-kube";
+              token = builtins.getEnv "GITHUB_TOKEN";
+            };
+            version = builtins.getEnv "VERSION";
+            images = with self.packages; [ x86_64-linux.container aarch64-linux.container ];
           };
 
           devShells.default =
