@@ -68,9 +68,6 @@ func NewCommand() *cobra.Command {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			sctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-			defer stop()
-
 			qs := quakeserver.Server{
 				Addr:          opts.ServerAddr,
 				ConfigFile:    opts.ConfigFile,
@@ -79,9 +76,24 @@ func NewCommand() *cobra.Command {
 				ShutdownDelay: opts.ShutdownDelay,
 			}
 			go func() {
+				// The main context should only cancel after the quake server is
+				// finished. This allows for graceful termination and the child process
+				// to be safely killed before exiting.
 				defer cancel()
 
-				if err := qs.Start(sctx); err != nil {
+				ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+				defer stop()
+
+				registerSecondInterrupt(ctx.Done(), func() {
+					fmt.Println("\rCTRL+C pressed again, shutting down ...")
+
+					// We still need to call HardStop to ensure that the underlying child
+					// process is killed before exiting.
+					qs.HardStop()
+					os.Exit(1)
+				})
+
+				if err := qs.Start(ctx); err != nil {
 					log.Printf("quakeserver: %v\n", err)
 				}
 			}()
@@ -112,4 +124,15 @@ func NewCommand() *cobra.Command {
 	cmd.Flags().DurationVar(&opts.ShutdownDelay, "shutdown-delay", 1*time.Minute, "delay for graceful shutdown")
 	cmd.Flags().StringVar(&opts.SeedContentURL, "seed-content-url", "", "seed content from another content server")
 	return cmd
+}
+
+func registerSecondInterrupt(ready <-chan struct{}, fn func()) {
+	go func() {
+		<-ready
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGINT)
+		<-c
+		signal.Stop(c)
+		fn()
+	}()
 }
