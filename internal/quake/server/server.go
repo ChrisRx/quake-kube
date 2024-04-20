@@ -48,6 +48,8 @@ type Server struct {
 	Dir           string
 	WatchInterval time.Duration
 	ShutdownDelay time.Duration
+
+	cmd *exec.Cmd
 }
 
 func (s *Server) Start(ctx context.Context) error {
@@ -72,10 +74,10 @@ func (s *Server) Start(ctx context.Context) error {
 		"+set", "com_gamename", "Quake3Arena",
 		"+exec", "server.cfg",
 	}
-	cmd := exec.CommandContext(context.Background(), "ioq3ded", args...)
-	cmd.Dir = s.Dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	s.cmd = exec.CommandContext(context.Background(), "ioq3ded", args...)
+	s.cmd.Dir = s.Dir
+	s.cmd.Stdout = os.Stdout
+	s.cmd.Stderr = os.Stderr
 
 	if s.ConfigFile == "" {
 		cfg := Default()
@@ -86,21 +88,21 @@ func (s *Server) Start(ctx context.Context) error {
 		if err := os.WriteFile(filepath.Join(s.Dir, "baseq3/server.cfg"), data, 0644); err != nil {
 			return err
 		}
-		if err := cmd.Start(); err != nil {
+		if err := s.cmd.Start(); err != nil {
 			return err
 		}
-		return cmd.Wait()
+		return s.cmd.Wait()
 	}
 
 	if err := s.reload(); err != nil {
 		return err
 	}
-	if err := cmd.Start(); err != nil {
+	if err := s.cmd.Start(); err != nil {
 		return err
 	}
 
 	go func() {
-		if err := cmd.Wait(); err != nil {
+		if err := s.cmd.Wait(); err != nil {
 			log.Println(err)
 		}
 	}()
@@ -140,8 +142,8 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	defer func() {
-		if cmd.Process != nil {
-			if err := cmd.Process.Kill(); err != nil {
+		if s.cmd.Process != nil {
+			if err := s.cmd.Process.Kill(); err != nil {
 				log.Printf("couldn't kill process: %v\n", err)
 			}
 		}
@@ -154,11 +156,11 @@ func (s *Server) Start(ctx context.Context) error {
 				return err
 			}
 			configReloads.Inc()
-			if err := cmd.Restart(ctx); err != nil {
+			if err := s.cmd.Restart(ctx); err != nil {
 				return err
 			}
 			go func() {
-				if err := cmd.Wait(); err != nil {
+				if err := s.cmd.Wait(); err != nil {
 					log.Println(err)
 				}
 			}()
@@ -217,6 +219,14 @@ func (s *Server) GracefulStop() {
 			}
 			time.Sleep(1 * time.Second)
 			return
+		}
+	}
+}
+
+func (s *Server) HardStop() {
+	if s.cmd.Process != nil {
+		if err := s.cmd.Process.Kill(); err != nil {
+			log.Printf("couldn't kill process: %v\n", err)
 		}
 	}
 }
