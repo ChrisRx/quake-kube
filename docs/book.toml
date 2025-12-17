@@ -1,7 +1,6 @@
 [book]
 authors = ["Chris Marshall"]
 language = "en"
-multilingual = false
 src = "src"
 title = "The QuakeKube Book"
 
