@@ -75,6 +75,7 @@ func NewCommand() *cobra.Command {
 				WatchInterval: opts.WatchInterval,
 				ShutdownDelay: opts.ShutdownDelay,
 			}
+
 			go func() {
 				// The main context should only cancel after the quake server is
 				// finished. This allows for graceful termination and the child process

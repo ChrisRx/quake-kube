@@ -14,6 +14,7 @@ server:
   hostname: "quakekube"
   maxClients: 16
   password: "changeme"
+  listServer: "127.0.0.1:27950"
 commands:
   - addbot sarge 2
 maps:
