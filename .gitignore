@@ -23,3 +23,5 @@ assets/
 result
 
 .direnv
+hack/k3d/local-ca.crt
+dist/

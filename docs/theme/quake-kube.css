@@ -1,0 +1,80 @@
+/* The web app's colors (controllers/static/index.html) as the book's coal
+   theme, which book.toml makes the default. */
+.coal {
+    --bg: #0f0e0c;
+    --fg: #e8e2d9;
+
+    --sidebar-bg: #181613;
+    --sidebar-fg: #9a9086;
+    --sidebar-non-existant: #5c544c;
+    --sidebar-active: #e0562b;
+    --sidebar-spacer: #2e2924;
+    --sidebar-header-border-color: #e0562b;
+
+    --scrollbar: #5c544c;
+
+    --icons: #9a9086;
+    --icons-hover: #e8e2d9;
+
+    --links: #e0562b;
+
+    --inline-code-color: #f0b39a;
+
+    --theme-popup-bg: #181613;
+    --theme-popup-border: #2e2924;
+    --theme-hover: #221f1b;
+
+    --quote-bg: #181613;
+    --quote-border: #2e2924;
+
+    --warning-border: #d9a441;
+
+    --table-border-color: #2e2924;
+    --table-header-bg: #221f1b;
+    --table-alternate-bg: #15130f;
+
+    --searchbar-border-color: #2e2924;
+    --searchbar-bg: #181613;
+    --searchbar-fg: #e8e2d9;
+    --searchbar-shadow-color: #0f0e0c;
+    --searchresults-header-fg: #9a9086;
+    --searchresults-border-color: #2e2924;
+    --searchresults-li-bg: #181613;
+    --search-mark-bg: #c2421c;
+
+    --footnote-highlight: #e0562b;
+
+    --overlay-bg: rgba(15, 14, 12, 0.6);
+
+    --blockquote-note-color: #e0562b;
+    --blockquote-tip-color: #7dbb5a;
+    --blockquote-important-color: #e0562b;
+    --blockquote-warning-color: #d9a441;
+    --blockquote-caution-color: #c2421c;
+}
+
+/* Code blocks use the highlighting theme's background otherwise. */
+.coal .hljs {
+    background: #181613;
+}
+
+/* The light theme keeps its colors, with the web app's accent. */
+.light {
+    --links: #c2421c;
+    --sidebar-active: #c2421c;
+    --sidebar-header-border-color: #c2421c;
+    --footnote-highlight: #c2421c;
+}
+
+/* Titles in the web app's style. */
+.menu-title {
+    font: 700 1.8rem/var(--menu-bar-height) ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.content h1,
+.content h2 {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    letter-spacing: 0.02em;
+}

@@ -1,0 +1,29 @@
+name: Push Content Images
+
+# Content images are tagged with their mod's version, so they only need pushing
+# when they change. Building them downloads the mods, which are large.
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - 'content/**'
+  workflow_dispatch:
+
+jobs:
+  multiarch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [urban-terror, cpma]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - run: nix run --impure .#manifests.${{ matrix.image }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

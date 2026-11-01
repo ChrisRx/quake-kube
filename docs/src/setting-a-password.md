@@ -1,17 +1,24 @@
 # Setting a password
 
-A password should be set for the server to allow remote administration and is found in the server configuration settings:
+To require a password to join a server:
 
 ```yaml
-server:
-  password: "changeme"
+spec:
+  game:
+    password: "letmein"
 ```
 
-This will allow clients to use `\rcon changeme <cmd>` to remotely administrate the server. To create a password that must be provided by clients to connect:
+The web app's **Password** field sets it for servers it creates. The browser
+client asks for it when a server needs one.
 
-```yaml
-game:
-  password: "letmein"
+## Remote administration
+
+The controller generates an rcon password for each server and keeps it in the
+server's Secret, which has the same name as the server:
+
+```shell
+kubectl get secret <server> -o jsonpath='{.data.rconPassword}' | base64 -d
 ```
 
-This will add an additional dialog to the in-browser client to accept the password. It will only appear if the server indicates it needs a password.
+A native client can then administer the server from its console with
+`\rcon <password> <command>`.

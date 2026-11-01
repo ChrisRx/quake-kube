@@ -1,4 +1,4 @@
-name: Tests
+name: Checks
 
 on:
   push:
@@ -7,19 +7,28 @@ on:
     branches: [ main ]
 
 jobs:
+  # Lints and tests with the flake's dev shell, so CI uses the same tools as
+  # development.
   test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - name: Lint and test
+        run: nix develop --command task lint test
 
-      - name: Install golang
-        uses: actions/setup-go@v2
-        with:
-          go-version: '^1.21.5' # The Go version to download (if necessary) and use.
-
-      - name: Run tests
-        run: |
-          make test
+  # Checks the flake and builds the images, which are otherwise only built
+  # when they're pushed from main.
+  flake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - name: Check the flake
+        run: nix flake check
+      - name: Build the images
+        run: nix build --print-build-logs .#server-image .#controller-image
