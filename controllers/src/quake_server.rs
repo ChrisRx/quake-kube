@@ -137,6 +137,12 @@ pub struct GameSpec {
     pub weapon_respawn: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub single_player_skill: Option<i32>,
+    /// Runs the mod's game code from its 32-bit x86 library rather than a QVM, for mods that
+    /// only ship one, like Rocket Arena 3. ioquake3 loads it as qagamex86.so, which id's
+    /// releases called qagamei386.so. The server then only runs on x86-64
+    /// nodes, and runs the mod's native code in its pod.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
@@ -501,6 +507,12 @@ impl QuakeServer {
             .game
             .as_ref()
             .and_then(|game| game.fs_game.as_ref());
+        let native = self
+            .spec
+            .game
+            .as_ref()
+            .and_then(|game| game.native)
+            .unwrap_or(false);
         let annotations = (fs_game.is_some() || fetch.is_some()).then(|| {
             BTreeMap::from([(
                 CONTENT_CHECKSUM_ANNOTATION.to_owned(),
@@ -573,6 +585,10 @@ impl QuakeServer {
                             ..Container::default()
                         }],
                         volumes: Some(volumes),
+                        // Only the x86-64 server image can run 32-bit x86 game code.
+                        node_selector: native.then(|| {
+                            BTreeMap::from([("kubernetes.io/arch".to_owned(), "amd64".to_owned())])
+                        }),
                         ..PodSpec::default()
                     }),
                 },
@@ -753,7 +769,7 @@ mod tests {
     #[test]
     fn renders_mod_config() {
         let server = server(json!({
-            "game": { "type": 7, "fsGame": "q3ut4" },
+            "game": { "type": 7, "fsGame": "q3ut4", "native": true },
             "maps": [{ "name": "ut4_casa" }, { "name": "ut4_turnpike", "type": "FreeForAll" }],
             "cvars": { "g_gear": "0" },
             "content": [
@@ -765,6 +781,7 @@ mod tests {
             serde_yaml_ng::from_str(&server.render_config(None, "secret").unwrap()).unwrap();
         assert_eq!(config["fs"]["game"], "q3ut4");
         assert!(config["game"].get("fsGame").is_none());
+        assert_eq!(config["game"]["native"], true);
         assert_eq!(config["maps"][0]["type"], 7);
         assert_eq!(config["maps"][1]["type"], "FreeForAll");
         assert_eq!(config["cvars"]["g_gear"], "0");

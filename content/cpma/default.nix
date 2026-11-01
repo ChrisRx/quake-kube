@@ -40,6 +40,10 @@ stdenvNoCC.mkDerivation {
       openarena-0.8.8/baseoa/pak2-players.pk3 openarena-0.8.8/COPYING -d openarena
     sh ${./openarena-mynx.sh} openarena/pak2-players.pk3 $out/cpma/zz-openarena-mynx.pk3
     cp openarena/COPYING $out/cpma/zz-openarena-mynx-COPYING.txt
+    # Stand-ins for the full game's textures the preset's maps use, from
+    # hack/standins.py.
+    sh ${../openarena-standins.sh} ${openarena} ${./standins/images.txt} - \
+      $out/cpma/zz-openarena-standins.pk3
   ''
   # Which files the browser client reads on each map, from task content:profile.
   + lib.optionalString (builtins.pathExists ./profile.json) ''

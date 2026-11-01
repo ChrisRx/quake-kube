@@ -1138,6 +1138,11 @@
     "textures/evil8_wall/e8_mtlwall1.jpg",
     "textures/evil8_wall/e8_mtlwall2.jpg",
     "textures/evil8_wall/e8_mtlwall4.jpg"
+   ],
+   "cpma/zz-openarena-standins.pk3": [
+    "textures/base_light/ceil1_4.blend.tga",
+    "textures/base_light/ceil1_4.tga",
+    "textures/base_trim/proto_fence.tga"
    ]
   },
   "cpm20": {
@@ -1200,6 +1205,9 @@
    ],
    "cpma/z-cpma-pak153.pk3": [
     "textures/sfx/beam_blue4.tga"
+   ],
+   "cpma/zz-openarena-standins.pk3": [
+    "textures/sfx/lavabeam.jpg"
    ]
   },
   "cpm22": {
@@ -1254,6 +1262,160 @@
     "textures/mkoxide/wastelt1.jpg",
     "textures/mkoxide/wastelt1glow.jpg",
     "textures/qw_teleporter/qw_teleporter.tga"
+   ],
+   "cpma/zz-openarena-standins.pk3": [
+    "textures/base_trim/proto_fence.tga"
+   ]
+  },
+  "cpm23": {
+   "baseq3/pak0.pk3": [
+    "sound/world/portal01.wav",
+    "sound/world/suck1.wav"
+   ],
+   "cpma/map_cpm23.pk3": [
+    "env/cpm23_bk.jpg",
+    "env/cpm23_dn.jpg",
+    "env/cpm23_ft.jpg",
+    "env/cpm23_lf.jpg",
+    "env/cpm23_rt.jpg",
+    "env/cpm23_up.jpg",
+    "levelshots/cpm23.jpg",
+    "maps/cpm23.bsp",
+    "sound/cpm23/caw1.wav",
+    "sound/cpm23/caw2.wav",
+    "sound/cpm23/caw3.wav",
+    "sound/cpm23/caw4.wav",
+    "sound/cpm23/caw6.wav",
+    "sound/cpm23/clatter.wav",
+    "sound/cpm23/flouro1.wav",
+    "textures/cpm23/Pan1a.jpg",
+    "textures/cpm23/Pan1b.jpg",
+    "textures/cpm23/Pan4a.tga",
+    "textures/cpm23/Pan4b.tga",
+    "textures/cpm23/blocks2.jpg",
+    "textures/cpm23/brick1_1.tga",
+    "textures/cpm23/ceil15.jpg",
+    "textures/cpm23/ceil15fx.jpg",
+    "textures/cpm23/ceil16.jpg",
+    "textures/cpm23/ceil16fx.jpg",
+    "textures/cpm23/clangfloor3.jpg",
+    "textures/cpm23/clangfloor3blood.tga",
+    "textures/cpm23/crow1.tga",
+    "textures/cpm23/cstonefloor1.jpg",
+    "textures/cpm23/cstonefloor1blood.tga",
+    "textures/cpm23/cstonefloor1ow.jpg",
+    "textures/cpm23/dirt1.jpg",
+    "textures/cpm23/fan2.tga",
+    "textures/cpm23/goth1.jpg",
+    "textures/cpm23/goth1blend.jpg",
+    "textures/cpm23/grate1.jpg",
+    "textures/cpm23/litpan1.jpg",
+    "textures/cpm23/litpan1fx.jpg",
+    "textures/cpm23/litpan2.jpg",
+    "textures/cpm23/litpan2fx.jpg",
+    "textures/cpm23/lunfx.jpg",
+    "textures/cpm23/nubian5.jpg",
+    "textures/cpm23/protograte1.tga",
+    "textures/cpm23/protograte3.tga",
+    "textures/cpm23/rock_new1.jpg",
+    "textures/cpm23/rock_new2.jpg",
+    "textures/cpm23/slip3.jpg",
+    "textures/cpm23/slip4.jpg",
+    "textures/cpm23/sup_lite1fx.jpg",
+    "textures/cpm23/sup_lite2fx.jpg",
+    "textures/cpm23/sup_lite3fx.jpg",
+    "textures/cpm23/trilite1.jpg",
+    "textures/cpm23/trilite1fx.jpg",
+    "textures/cpm23/wcrete0.jpg",
+    "textures/cpm23/wcrete6.jpg",
+    "textures/cpm23/wcrod1.jpg",
+    "textures/cpm23/wcrod2.jpg",
+    "textures/cpm23/wcrod3.jpg",
+    "textures/cpm23/wcrod4.jpg",
+    "textures/cpm23/wmetal3.tga",
+    "textures/cpm23/xpipe3.jpg",
+    "textures/cpm23/xpiplun1a.tga",
+    "textures/cpm23/xpiplun2a.jpg",
+    "textures/cpm23/xpiplun2b.jpg",
+    "textures/cpm23/zinc_baseboard1.jpg",
+    "textures/cpm23/zinc_baseboard2.jpg",
+    "textures/cpm23/zinc_baseboard2v.jpg",
+    "textures/cpm23/zinc_lite1.jpg",
+    "textures/cpm23/zinc_lite2.jpg",
+    "textures/cpm23/zinc_lite3.jpg",
+    "textures/cpm23/zinc_lite4.jpg",
+    "textures/cpm23/zinc_lite4fx.jpg",
+    "textures/cpm23/zinc_panel1.jpg",
+    "textures/cpm23/zinc_panel2.jpg",
+    "textures/cpm23/zinc_panel4.jpg",
+    "textures/cpm23/zinc_panel5.jpg",
+    "textures/cpm23/zinc_panel6b.jpg",
+    "textures/cpm23/zinc_pillar1.jpg",
+    "textures/cpm23/zinc_pillar2.jpg",
+    "textures/cpm23/zinc_rusty1.jpg",
+    "textures/cpm23/zinc_rusty1ach.jpg"
+   ],
+   "cpma/zz-openarena-standins.pk3": [
+    "textures/base_support/x_support.tga",
+    "textures/sfx/fan_grate.tga"
+   ]
+  },
+  "cpm24": {
+   "baseq3/pak0.pk3": [
+    "textures/effects/envmapgold.jpg",
+    "textures/skies/killsky_1.jpg",
+    "textures/skies/killsky_2.jpg"
+   ],
+   "cpma/map_cpm24.pk3": [
+    "levelshots/cpm24.jpg",
+    "maps/cpm24.bsp",
+    "textures/cpm24/floor05.jpg",
+    "textures/cpm24/floor1.jpg",
+    "textures/cpm24/grate1_1.jpg",
+    "textures/cpm24/green1_1.jpg",
+    "textures/cpm24/green1_2.jpg",
+    "textures/cpm24/light01.jpg",
+    "textures/cpm24/light01_glow.jpg",
+    "textures/cpm24/litpan1.jpg",
+    "textures/cpm24/litpan1fx.jpg",
+    "textures/cpm24/litpan2.jpg",
+    "textures/cpm24/litpan2fx.jpg",
+    "textures/cpm24/litpan3.jpg",
+    "textures/cpm24/litpan3fx.jpg",
+    "textures/cpm24/metal4_1.jpg",
+    "textures/cpm24/metal4_1shiny.tga",
+    "textures/cpm24/metal9_1.jpg",
+    "textures/cpm24/metal_rustybrown_wideslots.jpg",
+    "textures/cpm24/metalbase.jpg",
+    "textures/cpm24/metalmech1.jpg",
+    "textures/cpm24/metalstrip2.jpg",
+    "textures/cpm24/redline.tga",
+    "textures/cpm24/redstatic.tga",
+    "textures/cpm24/stair1.jpg",
+    "textures/cpm24/trim20.tga",
+    "textures/cpm24/trlight05.jpg",
+    "textures/cpm24/trlight05_glow.jpg",
+    "textures/cpm24/wastelt1.jpg",
+    "textures/cpm24/wastelt1glow.jpg",
+    "textures/cpm24/wcrod1.jpg",
+    "textures/cpm24/wmetal3.tga",
+    "textures/cpm24/zinc_baseboard2.jpg",
+    "textures/cpm24/zinc_baseboard2v.jpg",
+    "textures/cpm24/zinc_pillar1.jpg",
+    "textures/cpm24/zinc_pillar2v.jpg",
+    "textures/cpm24/zinc_pillar3circles.jpg",
+    "textures/cpm24/zinc_rusty1.jpg",
+    "textures/cpm24/zinc_rusty1ach.jpg",
+    "textures/mapcent5_rock/cray_rock_01.jpg"
+   ],
+   "cpma/zz-openarena-standins.pk3": [
+    "textures/base_floor/clangdark.jpg",
+    "textures/base_light/ceil1_22a.blend.tga",
+    "textures/base_light/ceil1_22a.tga",
+    "textures/liquids/protolava.tga",
+    "textures/liquids/protolava2.jpg",
+    "textures/sfx/fan_grate.tga",
+    "textures/sfx/lavabeam.jpg"
    ]
   },
   "cpm25": {
@@ -1312,6 +1474,11 @@
    "cpma/map_cpmctf1.pk3": [
     "sound/qw/medplat1.wav",
     "sound/qw/medplat2.wav"
+   ],
+   "cpma/zz-openarena-standins.pk3": [
+    "textures/base_trim/dirty_pewter_big.jpg",
+    "textures/liquids/pool3d_3e.jpg",
+    "textures/liquids/pool3d_5e.jpg"
    ]
   },
   "cpm27": {
@@ -1414,6 +1581,11 @@
    "cpma/map_cpmctf5.pk3": [
     "sound/q2plats/pt1_end.wav",
     "sound/q2plats/pt1_strt.wav"
+   ],
+   "cpma/zz-openarena-standins.pk3": [
+    "textures/base_wall/concrete_dark.jpg",
+    "textures/liquids/slime7.jpg",
+    "textures/liquids/slime7c.jpg"
    ]
   },
   "cpm28": {
@@ -1439,6 +1611,11 @@
     "textures/acid/wall_red033.tga",
     "textures/acid/wall_red066.tga",
     "textures/acid/wall_red100.tga"
+   ],
+   "cpma/zz-openarena-standins.pk3": [
+    "textures/liquids/pool3d_3.jpg",
+    "textures/liquids/pool3d_5.jpg",
+    "textures/liquids/pool3d_6.jpg"
    ]
   },
   "cpm29": {
@@ -1577,6 +1754,10 @@
    ],
    "cpma/z-cpma-pak153.pk3": [
     "models/mapobjects/spotlamp/beam.tga"
+   ],
+   "cpma/zz-openarena-standins.pk3": [
+    "textures/liquids/protolava.tga",
+    "textures/liquids/protolava2.jpg"
    ]
   },
   "cpm4a": {

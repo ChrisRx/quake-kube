@@ -1,4 +1,5 @@
-# Urban Terror 4.3.4's game files for a content image: its q3ut4/ directory.
+# Urban Terror 4.3.4's game files for a content image: its q3ut4/ directory,
+# with community maps whose readmes allow free distribution, unaltered.
 {
   lib,
   stdenvNoCC,
@@ -6,6 +7,14 @@
   unzip,
 }:
 
+let
+  # Kr0t4L's Orbital, whose readme (ut4_orbital_sl.txt, in the pk3) allows
+  # distributing it freely.
+  orbital = fetchurl {
+    url = "https://urt.li/q3ut4/ut4_orbital_sl.pk3";
+    hash = "sha256-Mn/D4eAZrQQerEzGvbSIQcSGdA1/r00Y/36QTlVJBgE=";
+  };
+in
 stdenvNoCC.mkDerivation {
   pname = "urban-terror-content";
   version = "4.3.4";
@@ -20,6 +29,7 @@ stdenvNoCC.mkDerivation {
   installPhase = ''
     mkdir -p $out
     mv UrbanTerror43/q3ut4 $out/
+    cp ${orbital} $out/q3ut4/ut4_orbital_sl.pk3
   ''
   # Which files the browser client reads on each map, from task content:profile.
   + lib.optionalString (builtins.pathExists ./profile.json) ''

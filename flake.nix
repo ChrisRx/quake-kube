@@ -52,6 +52,9 @@
           "controller-image"
           "urban-terror-image"
           "cpma-image"
+          "openarena-image"
+          "rocket-arena-image"
+          "quake3-maps-image"
         ] (name: quakeKube.packages.${name});
 
         legacyPackages = {

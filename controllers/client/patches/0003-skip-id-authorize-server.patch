@@ -1,0 +1,50 @@
+Skip id's authorize server, which is long gone.
+
+Built without STANDALONE, for the legacy protocol, the server asks the
+authorize server about each client from outside the LAN and the client asks
+it to check its CD key. With no authorize server, the name is empty and
+neither tries.
+
+diff --git a/code/client/cl_main.c b/code/client/cl_main.c
+index d8c8c66..6f88d68 100644
+--- a/code/client/cl_main.c
++++ b/code/client/cl_main.c
+@@ -1594,6 +1594,10 @@ void CL_RequestAuthorization( void ) {
+ 	int		i, j, l;
+ 	cvar_t	*fs;
+ 
++	if ( !AUTHORIZE_SERVER_NAME[0] ) {
++		return;
++	}
++
+ 	if ( !cls.authorizeServer.port ) {
+ 		Com_Printf( "Resolving %s\n", AUTHORIZE_SERVER_NAME );
+ 		if ( !NET_StringToAdr( AUTHORIZE_SERVER_NAME, &cls.authorizeServer, NA_IP ) ) {
+diff --git a/code/qcommon/qcommon.h b/code/qcommon/qcommon.h
+index 1d9b61a..6f67c8a 100644
+--- a/code/qcommon/qcommon.h
++++ b/code/qcommon/qcommon.h
+@@ -262,7 +262,8 @@ extern int demo_protocols[];
+ 
+ #ifndef STANDALONE
+   #ifndef AUTHORIZE_SERVER_NAME
+-    #define	AUTHORIZE_SERVER_NAME	"authorize.quake3arena.com"
++    // id's authorize server is long gone, so clients aren't checked with it.
++    #define	AUTHORIZE_SERVER_NAME	""
+   #endif
+   #ifndef PORT_AUTHORIZE
+   #define	PORT_AUTHORIZE		27952
+diff --git a/code/server/sv_client.c b/code/server/sv_client.c
+index 85e5d03..29e7522 100644
+--- a/code/server/sv_client.c
++++ b/code/server/sv_client.c
+@@ -147,7 +147,8 @@ void SV_GetChallenge(netadr_t from)
+ #ifndef STANDALONE
+ 	// Drop the authorize stuff if this client is coming in via v6 as the auth server does not support ipv6.
+ 	// Drop also for addresses coming in on local LAN and for stand-alone games independent from id's assets.
+-	if(challenge->adr.type == NA_IP && !com_standalone->integer && !Sys_IsLANAddress(from))
++	if(challenge->adr.type == NA_IP && !com_standalone->integer && !Sys_IsLANAddress(from)
++		&& AUTHORIZE_SERVER_NAME[0])
+ 	{
+ 		// look up the authorize server's IP
+ 		if (svs.authorizeAddress.type == NA_BAD)
