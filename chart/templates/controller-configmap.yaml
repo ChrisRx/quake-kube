@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "chart.fullname" . }}-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+data:
+  config.yaml: |
+    master:
+      port: {{ .Values.master.port }}
+      # Game servers send heartbeats here so the list refreshes when they change.
+      address: {{ printf "%s-master.%s.svc:%v" (include "chart.fullname" .) .Release.Namespace .Values.master.port | quote }}
+    gateway:
+      port: 8080
+      namespace: {{ .Values.gateway.namespace | default .Release.Namespace | quote }}
+      maxServers: {{ .Values.gateway.maxServers }}
+      presets:
+        {{- toYaml .Values.gateway.presets | nindent 8 }}
+      webtransport:
+        enabled: {{ .Values.gateway.webtransport.enabled }}
+        port: 4433
+        {{- with .Values.gateway.webtransport.publicAddress }}
+        publicAddress: {{ . | quote }}
+        {{- end }}
+        publicPort: {{ .Values.gateway.webtransport.service.port }}
+        {{- if .Values.gateway.webtransport.tls.secretName }}
+        tlsDir: /etc/quake-kube/webtransport-tls
+        {{- end }}
+    gameServers:
+      exposure:
+        type: {{ .Values.gameServers.exposure.type }}
+        {{- with .Values.gameServers.exposure.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.gameServers.exposure.portRange }}
+        portRange: {{ . | quote }}
+        {{- end }}

@@ -1,6 +1,7 @@
 # Credits
 
-* [inolen/quakejs](https://github.com/inolen/quakejs) - The really awesome QuakeJS project that makes this possible.
-* [ioquake/ioq3](https://github.com/ioquake/ioq3) - The community supported version of Quake 3 used by QuakeJS. It is licensed under the GPLv2.
-* [begleysm/quakejs](https://github.com/begleysm/quakejs) - Information in the README.md (very helpful) was used as a guide, as well as, some forked assets of this project (which came from quakejs-web originally) were used.
+* [ioquake/ioq3](https://github.com/ioquake/ioq3) - The community supported version of Quake 3 used for the dedicated server and the browser client. It is licensed under the GPLv2.
+* [inolen/quakejs](https://github.com/inolen/quakejs) - The really awesome QuakeJS project, which was the original browser client and showed it could be done.
+* [begleysm/quakejs](https://github.com/begleysm/quakejs) - Information in the README.md (very helpful) was used as a guide for setting up the original QuakeJS client.
+* [OpenArena](https://openarena.ws) - Its "major" player model and voice stand in for CPMA's default player model, which is only in the full game. It is licensed under the GPLv2.
 * [joz3d.net](http://www.joz3d.net/html/q3console.html) - Useful information about configuration values.

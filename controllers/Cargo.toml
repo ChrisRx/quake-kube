@@ -1,0 +1,27 @@
+[package]
+name = "quake-kube-controller"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# 0.28 is the newest version kube supports. Targeting v1_33 keeps the
+# controller compatible with older clusters.
+k8s-openapi = { version = "0.28.0", features = ["v1_33"] }
+kube = { version = "4.2.0", features = ["runtime", "derive"] }
+tokio = { version = "1.54.1", features = ["full"] }
+anyhow = "1.0.104"
+futures = "0.3.34"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+serde_yaml_ng = "0.10.0"
+schemars = "1.2.3"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+thiserror = "2.0.21"
+rand = "0.10.3"
+axum = { version = "0.8.9", features = ["ws"] }
+wtransport = "0.7.2"
+# Only used for plain HTTP inside the cluster, so no TLS.
+reqwest = { version = "0.13.5", default-features = false, features = ["stream"] }

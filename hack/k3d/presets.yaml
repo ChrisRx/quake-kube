@@ -1,0 +1,50 @@
+# Presets for the dev cluster. The Tiltfile builds their content images and
+# pushes them to the cluster's registry.
+gateway:
+  presets:
+    - name: quake3
+      title: Quake 3
+      gameTypes:
+        - {name: Free For All, type: FreeForAll}
+        - {name: Tournament, type: Tournament}
+        - {name: Team Deathmatch, type: TeamDeathmatch}
+        - {name: Capture The Flag, type: CaptureTheFlag}
+      maps: [q3dm1, q3dm7, q3dm17, q3tourney2]
+    - name: urban-terror
+      title: Urban Terror 4.3
+      bots: false
+      gameTypes:
+        - {name: Capture The Flag, type: 7}
+        - {name: Team Deathmatch, type: 3}
+        - {name: Team Survivor, type: 4}
+        - {name: Free For All, type: 0}
+        - {name: Bomb Mode, type: 8}
+      maps:
+        - ut4_turnpike
+        - ut4_casa
+        - ut4_abbey
+        - ut4_algiers
+        - ut4_austria
+        - ut4_uptown
+        - ut4_prague
+        - ut4_kingdom
+      spec:
+        timeLimit: 20m
+        game: {fsGame: q3ut4}
+        content:
+          - image: k3d-quake-kube-registry:5000/quake-kube-urban-terror:4.3.4
+    - name: cpma
+      title: CPMA
+      gameTypes:
+        - {name: Free For All, cvars: {mode_start: FFA}}
+        - {name: Duel, cvars: {mode_start: 1v1}}
+        - {name: Team Deathmatch, cvars: {mode_start: TDM}}
+        - {name: Clan Arena, cvars: {mode_start: CA}}
+      # CPMA maps missing at most two textures without the full game.
+      maps: [cpm22, cpm4a, cpm29, cpm28, cpm3a, cpm19, cpm20, cpm25, cpm27, cpm18r]
+      spec:
+        game: {fsGame: cpma}
+        # Otherwise CPMA picks each map's mode from its own list.
+        cvars: {server_useMapModes: "0"}
+        content:
+          - image: k3d-quake-kube-registry:5000/quake-kube-cpma:1.53

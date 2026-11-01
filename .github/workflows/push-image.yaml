@@ -2,7 +2,6 @@ name: Push Image
 
 on:
   push:
-    # Sequence of patterns matched against refs/tags
     branches:
       - 'main'
     tags:
@@ -17,18 +16,40 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix:
+        image: [server, controller]
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
-      - uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-      - uses: DeterminateSystems/nix-installer-action@v9
-        with:
-          extra-conf: |
-            extra-platforms = aarch64-linux
-      - uses: DeterminateSystems/magic-nix-cache-action@v2
-      - run: nix run --impure .#dockerManifest
+        uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      # Builds the image for x86_64 and aarch64, cross compiling for aarch64, and
+      # pushes them as one multi-arch image tagged with the branch, latest on main,
+      # and the version for v* tags.
+      - run: nix run --impure .#manifests.${{ matrix.image }}
         env:
-          VERSION: "latest"
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+  # Releases publish the Helm chart, versioned like their images, once the
+  # images are pushed:
+  #   helm install quake-kube oci://ghcr.io/chrisrx/quake-kube --version 1.2.0
+  chart:
+    if: github.ref_type == 'tag'
+    needs: multiarch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - name: Push the chart
+        run: |
+          echo "$GITHUB_TOKEN" | nix develop --command helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          nix develop --command task chart:push VERSION="${GITHUB_REF_NAME#v}"
+        env:
           GITHUB_TOKEN: ${{ github.token }}

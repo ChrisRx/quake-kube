@@ -1,22 +1,28 @@
 # Add bots
 
-Bots can be added individually to map rotations using the `commands` section of the config:
+The simplest way to add bots is to set a minimum number of players. The server
+adds bots up to that number and removes them as people join:
 
 ```yaml
-commands:
-  - addbot crash 1
-  - addbot sarge 2
+spec:
+  bot:
+    minPlayers: 8
+  game:
+    singlePlayerSkill: 2
 ```
 
-The `addbot` server command requires the name of the bot and skill level (crash and sarge are a couple of the built-in bots).
+`singlePlayerSkill` sets the skill of the bots it adds, from 1 to 5 (2 by
+default). The web app's **Bots** field sets `minPlayers` for servers it creates.
 
-Another way to add bots is by setting a minimum number of players to allow the server to add bots up to a certain value (removed when human players join):
+Bots can also be added individually with the `addbot` command, which takes the
+bot's name and skill level, using the `commands` section:
 
 ```yaml
-bot:
-  minPlayers: 8
-game:
-  singlePlayerSkill: 2
+spec:
+  commands:
+    - addbot crash 1
+    - addbot sarge 2
 ```
 
-`singlePlayerSkill` can be used to set the skill level of the automatically added bots (2 is the default skill level).
+The Quake 3 demo only has some of the game's bots. Mods like Urban Terror don't
+have bots at all, so their presets hide the web app's **Bots** field.

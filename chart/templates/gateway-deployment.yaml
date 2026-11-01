@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart.fullname" . }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels:
+      {{- include "chart.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      annotations:
+        # Restart the gateway when its config changes.
+        checksum/config: {{ include (print $.Template.BasePath "/controller-configmap.yaml") . | sha256sum }}
+        {{- with .Values.gateway.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "chart.labels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway
+        {{- with .Values.gateway.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "chart.fullname" . }}-gateway
+      securityContext:
+        {{- toYaml .Values.controller.podSecurityContext | nindent 8 }}
+      containers:
+        - name: gateway
+          # The gateway is a role of the controller binary.
+          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          args: ["gateway"]
+          env:
+            - name: RUST_LOG
+              value: {{ .Values.gateway.logLevel | quote }}
+            - name: QUAKE_KUBE_CONFIG
+              value: /etc/quake-kube/config.yaml
+          ports:
+            - name: http
+              containerPort: 8080
+            {{- if .Values.gateway.webtransport.enabled }}
+            - name: webtransport
+              containerPort: 4433
+              protocol: UDP
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/quake-kube
+              readOnly: true
+            {{- if .Values.gateway.webtransport.tls.secretName }}
+            - name: webtransport-tls
+              mountPath: /etc/quake-kube/webtransport-tls
+              readOnly: true
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.controller.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "chart.fullname" . }}-controller
+        {{- with .Values.gateway.webtransport.tls.secretName }}
+        - name: webtransport-tls
+          secret:
+            secretName: {{ . }}
+        {{- end }}
+      {{- with .Values.gateway.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

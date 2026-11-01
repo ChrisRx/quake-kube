@@ -1,14 +1,157 @@
-# Default values for chart.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
+# Default values for quake-kube.
 
-replicaCount: 1
+crds:
+  # Install the CRDs with the chart. Disable when CRDs are managed separately.
+  install: true
+  # Keep the CRDs, and with them every QuakeServer, when the release is
+  # uninstalled.
+  keep: true
 
-image:
-  repository: ghcr.io/ChrisRx/quake-kube
-  pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: "latest"
+controller:
+  image:
+    repository: ghcr.io/chrisrx/quake-kube-controller
+    pullPolicy: IfNotPresent
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: ""
+  # Log filter, in RUST_LOG syntax, e.g. "info,quake_kube_controller=debug".
+  logLevel: info
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# The master server runs in the controller. It lists the game servers for
+# native Quake 3 clients' server browsers, using their external addresses.
+master:
+  port: 27950
+  service:
+    # Clients outside the cluster need to reach this, so it's a LoadBalancer
+    # by default. Use NodePort or ClusterIP if native clients aren't needed.
+    type: LoadBalancer
+    annotations: {}
+
+# The gateway serves the web app, which lists servers, creates them and runs
+# the browser client. It relays browser clients' game traffic, so it runs
+# separately from the controller.
+gateway:
+  replicas: 1
+  # Log filter, in RUST_LOG syntax.
+  logLevel: info
+  # Namespace for servers created from the web app. Defaults to the release
+  # namespace.
+  namespace: ""
+  # How many servers can be created from the web app at once. 0 turns
+  # creating servers off. The web app has no login of its own, so put
+  # authentication in front of it (e.g. in the ingress) if it's reachable by
+  # people who shouldn't create servers.
+  maxServers: 10
+  # The games offered when creating a server. Each game type sets a type
+  # (g_gametype, a name or a mod's number) and/or cvars, e.g. CPMA's
+  # mode_start. spec is the start of each server's QuakeServer spec, e.g. a
+  # mod's game.fsGame and content, where its maps must be. The server image
+  # only has the Quake 3 demo maps.
+  presets:
+    - name: quake3
+      title: Quake 3
+      gameTypes:
+        - {name: Free For All, type: FreeForAll}
+        - {name: Tournament, type: Tournament}
+        - {name: Team Deathmatch, type: TeamDeathmatch}
+        - {name: Capture The Flag, type: CaptureTheFlag}
+      maps: [q3dm1, q3dm7, q3dm17, q3tourney2]
+    # - name: urban-terror
+    #   title: Urban Terror 4.3
+    #   bots: false
+    #   gameTypes:
+    #     - {name: Capture The Flag, type: 7}
+    #     - {name: Team Deathmatch, type: 3}
+    #   maps: [ut4_turnpike, ut4_casa, ut4_abbey]
+    #   spec:
+    #     game: {fsGame: q3ut4}
+    #     content: [{image: ghcr.io/chrisrx/quake-kube-urban-terror:4.3.4}]
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:
+    enabled: false
+    className: ""
+    host: ""
+    annotations: {}
+    # e.g. [{secretName: quake-kube-tls, hosts: [quake.example.com]}]
+    tls: []
+  # WebTransport carries browser clients' game traffic in unreliable
+  # datagrams like native clients' UDP, avoiding the stalls TCP causes when
+  # packets are lost. It runs over HTTP/3, so it needs its own UDP Service
+  # rather than the ingress. Browsers only use it from HTTPS pages, and use a
+  # WebSocket through the web app otherwise. It's off by default since
+  # browsers need to reach it at publicAddress, or at the web app's hostname
+  # when the Service shares the ingress's address.
+  webtransport:
+    enabled: false
+    # Address browsers connect to, as host:port. When empty, browsers use the
+    # web app's hostname with service.port, which works when this Service
+    # shares the ingress's IP address.
+    publicAddress: ""
+    service:
+      type: LoadBalancer
+      port: 443
+      # e.g. to share the ingress controller's MetalLB address:
+      #   metallb.io/allow-shared-ip: <same key as the ingress Service>
+      #   metallb.io/loadBalancerIPs: <the ingress Service's IP>
+      annotations: {}
+    tls:
+      # Secret with a tls.crt and tls.key that browsers trust, e.g. from
+      # cert-manager. When empty, each gateway replica uses its own
+      # self-signed certificate, which browsers accept by its hash. Browsers
+      # only allow that for certificates valid up to 14 days, so it's replaced
+      # every 10 days. With several replicas, use a Secret, since a page may
+      # get one replica's hash and reach another.
+      secretName: ""
+  podAnnotations: {}
+  podLabels: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Settings for the game servers the controller creates from QuakeServer
+# objects.
+gameServers:
+  image:
+    repository: ghcr.io/chrisrx/quake-kube-server
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: ""
+  # How native Quake 3 clients reach game servers. Browser clients don't need
+  # this, they connect over HTTP.
+  exposure:
+    # LoadBalancer: a UDP LoadBalancer Service per server.
+    # NodePort:     a UDP NodePort Service per server.
+    # HostPort:     the game port is bound on the node running the server.
+    # None:         only reachable from inside the cluster.
+    type: LoadBalancer
+    # Added to each server's LoadBalancer or NodePort Service, e.g. to request
+    # a UDP load balancer from a cloud provider, or to share one MetalLB
+    # address between servers:
+    #   metallb.io/allow-shared-ip: quake-kube
+    #   metallb.io/loadBalancerIPs: 172.28.0.150
+    annotations: {}
+    # Allocate each server its own external port from this range, e.g.
+    # "27960-27999". Required when servers share an address. With NodePort the
+    # range must be inside the cluster's NodePort range. When empty, servers
+    # use 27960, or a NodePort chosen by Kubernetes.
+    portRange: ""
 
 imagePullSecrets: []
 nameOverride: ""
@@ -24,53 +167,3 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
-
-podAnnotations:
-  prometheus.io/scrape: 'true'
-  prometheus.io/port: '8080'
-
-podLabels: {}
-
-podSecurityContext: {}
-  # fsGroup: 2000
-
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
-
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
-
-# Additional volumes on the output Deployment definition.
-volumes:
-  - name: quake3-server-config
-    configMap:
-      name: quake3-server-config
-  - name: quake3-content
-    emptyDir: {}
-
-# Additional volumeMounts on the output Deployment definition.
-volumeMounts:
-  - name: quake3-server-config
-    mountPath: /config
-  - name: quake3-content
-    mountPath: /assets
-
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	contentutil "github.com/ChrisRx/quake-kube/internal/quake/content/util"
+	"github.com/ChrisRx/quake-kube/internal/quake/content"
 )
 
 //go:embed EULA.txt
@@ -48,7 +48,7 @@ func ExtractGameFiles(dir string) error {
 				return err
 			}
 			if strings.HasPrefix(hdr.Name, "linuxq3ademo") || strings.HasPrefix(hdr.Name, "linuxq3apoint") {
-				if err := contentutil.ExtractGzip(path, dir); err != nil {
+				if err := content.ExtractGzip(path, dir); err != nil {
 					return err
 				}
 			}

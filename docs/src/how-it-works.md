@@ -1,13 +1,66 @@
 # How it works
 
-QuakeKube makes use of [ioquake](https://www.ioquake.org) for the Quake 3 dedicated server, and [QuakeJS](https://github.com/inolen/quakejs), a port of ioquake to javascript using [Emscripten](http://github.com/kripken/emscripten), to provide an in-browser game client.
+QuakeKube runs [ioquake3](https://ioquake3.org) dedicated servers on Kubernetes,
+and ioquake3 built with [Emscripten](https://emscripten.org/) as the browser
+client.
 
-## Networking
+## Controller
 
-The client/server protocol of Quake 3 uses UDP to synchronize game state. Browsers do not natively support sending UDP packets so QuakeJS wraps the client and dedicated server net code in websockets, allowing the browser-based clients to send messages and enable multiplayer for other clients. This ends up preventing the browser client from using any other Quake 3 dedicated server. In order to use other Quake 3 dedicated servers, a proxy handles websocket traffic coming from browser clients and translates that into UDP to the backend. This gives the flexibility of being able to talk to other existing Quake 3 servers, but also allows using ioquake (instead of the javascript translation of it), which uses *considerably* less CPU and memory.
+The controller reconciles `QuakeServer` objects. For each one it creates:
 
-QuakeKube also uses a cool trick with [cmux](https://github.com/soheilhy/cmux) to multiplex the client and websocket traffic into the same connection. Having all the traffic go through the same address makes routing a client to its backend much easier (since it can just use its `document.location.host`).
+- a Secret with the server's configuration and a generated rcon password
+- a Deployment running the game server
+- a Service for the gateway to reach the server inside the cluster
+- a Service exposing the game's UDP port to native clients, depending on
+  `gameServers.exposure` (LoadBalancer, NodePort, a host port or nothing)
+
+The server's status has its external address once it's reachable.
+
+The controller also runs a Quake 3 master server. Game servers send it
+heartbeats, and it answers server browsers' queries with every ready server's
+external address.
+
+## Game servers
+
+Each game server's pod runs the `q3` command from the game server image:
+
+- `q3 fetch`, an init container, puts the server's content in place: it
+  downloads pk3s and zip archives, and links the files from content images,
+  which are mounted as image volumes.
+- `q3 run` adds the Quake 3 demo's files, turns the configuration into a
+  `server.cfg` and runs `ioq3ded`, restarting it when the configuration
+  changes. When the pod stops, it warns players and counts down before
+  shutting the server down.
+
+`q3 run` also serves the server's content and info over HTTP, for browser
+clients, its Prometheus metrics, and a gRPC health check for the pod's probes,
+all on port 8080.
+
+## Gateway
+
+The gateway serves the web app, which lists the servers, creates them from the
+presets in `gateway.presets`, and runs the browser client.
+
+The Quake 3 protocol is UDP, which browsers can't send. The browser client's
+traffic goes to the gateway instead, which relays it to the server's UDP port.
+It uses [WebTransport](https://developer.mozilla.org/en-US/docs/Web/API/WebTransport_API)
+when it can, whose unreliable datagrams behave like UDP, and falls back to a
+WebSocket, where one lost packet holds up everything behind it. Since the
+servers only ever see UDP, they're plain ioquake3 servers that native clients
+can join too.
+
+## Browser client
+
+The play page downloads the server's content through the gateway, the same
+files the server has, so it plays the server's mod and maps. It keeps them in
+the browser's cache, keyed by checksum, so they're only downloaded once and
+shared between servers. Mods have to ship QVMs to run in the browser, since it
+can't load native game libraries.
 
 ## Quake 3 demo EULA
 
-The Quake 3 dedicated server requires an End-User License Agreement be agreed to by the user before distributing the Quake 3 demo files that are used (maps, textures, etc). To ensure that the installer is aware of, and agrees to, this EULA, the flag `--agree-eula` must be passed to `q3 server` at runtime. This flag is not set by default in the container image and is therefore required for the dedicated server to pass the prompt for EULA. The [example.yaml](example.yaml) manifest demonstrates usage of this flag to agree to the EULA.
+The game servers use the files from the Quake 3 demo, whose End-User License
+Agreement must be agreed to before they're distributed. `q3 run` won't start
+without `--agree-eula`, which the controller passes, so installing QuakeKube
+means agreeing to it. Browser clients show it to players before downloading the
+files.

@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -86,6 +87,59 @@ func TestConfigMarshal(t *testing.T) {
 	}
 	fmt.Printf("%s\n", data)
 	if diff := cmp.Diff(string(data), expectedConfig); diff != "" {
-		t.Fatalf(diff)
+		t.Fatal(diff)
+	}
+}
+
+const modConfig = `
+game:
+  motd: 'say "hi"; quit'
+fs:
+  game: q3ut4
+cvars:
+  g_gear: "0"
+  mode_start: FFA
+content:
+- url: https://example.com/urt.zip
+  stripComponents: 1
+maps:
+- name: ut4_turnpike
+  type: 7
+- name: ut4_casa
+  type: TeamDeathmatch
+`
+
+func TestModConfigMarshal(t *testing.T) {
+	var cfg *Config
+	if err := yaml.Unmarshal([]byte(modConfig), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Game != "q3ut4" || len(cfg.Content) != 1 || cfg.Content[0].StripComponents != 1 {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+	data, err := cfg.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"seta g_motd \"say hi; quit\"\n",
+		"seta g_gear \"0\"\nseta mode_start \"FFA\"\nset d0 ",
+		"set d0 \"seta g_gametype 7 ; map ut4_turnpike ; set nextmap vstr d1\"\n",
+		"set d1 \"seta g_gametype 3 ; map ut4_casa ; set nextmap vstr d0\"\n",
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("config is missing %q:\n%s", want, data)
+		}
+	}
+}
+
+func TestConfigRejectsUnsafeNames(t *testing.T) {
+	for _, cfg := range []*Config{
+		{Maps: Maps{{Name: "q3dm7 ; quit"}}},
+		{Cvars: map[string]string{"a;quit": "1"}},
+	} {
+		if _, err := cfg.Marshal(); err == nil {
+			t.Errorf("expected an error for %+v", cfg)
+		}
 	}
 }
