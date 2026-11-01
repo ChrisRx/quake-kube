@@ -17,6 +17,13 @@ spec:
       annotations:
         # Restart the gateway when its config changes.
         checksum/config: {{ include (print $.Template.BasePath "/controller-configmap.yaml") . | sha256sum }}
+        {{- with .Chart.Annotations }}
+        {{- with index . "quake.kube/commit" }}
+        # The commit the published chart was built from, so upgrades restart the pods,
+        # which pull the newest images.
+        quake.kube/commit: {{ . | quote }}
+        {{- end }}
+        {{- end }}
         {{- with .Values.gateway.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -38,7 +45,9 @@ spec:
         - name: gateway
           # The gateway is a role of the controller binary.
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          {{- with .Values.controller.image.pullPolicy }}
+          imagePullPolicy: {{ . }}
+          {{- end }}
           args: ["gateway"]
           env:
             - name: RUST_LOG

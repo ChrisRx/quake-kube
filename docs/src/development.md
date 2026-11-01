@@ -15,10 +15,8 @@
 
 ## Images
 
-Releases are `v*` tags. The `Push Image` workflow pushes the images tagged
-with the release's version, then the Helm chart, versioned to match, to
-`oci://ghcr.io/chrisrx/quake-kube`. `task chart:push VERSION=1.2.0` does the
-same for the chart by hand.
+Every push to main publishes the images and the chart (see
+[Publishing](#publishing)).
 
 The flake builds every image, cross compiling from the build machine for
 x86_64 and aarch64. The ones for the build machine's platform are packages:
@@ -123,6 +121,19 @@ This starts a server for each of the preset's maps in `hack/k3d/presets.yaml`,
 joins it in headless Chromium with the engine logging the files it opens, and
 writes `content/<mod>/profile.json`, which the content image includes. Files
 read on at least half the maps are fetched for every map.
+
+## Publishing
+
+There are no tagged releases. Every push to main pushes the server and
+controller images tagged `main` and `latest`, then publishes the chart to
+`oci://ghcr.io/chrisrx/quake-kube` with the version in `chart/Chart.yaml`,
+replacing the published chart with that version. The chart deploys the
+`latest` images. CI adds the commit to the published chart's annotations,
+which its pods carry, so `helm upgrade` restarts them and they pull the newest
+images. `task chart:push` publishes the chart by hand.
+
+Content images are versioned separately, by the mod's version in
+`content/<mod>/default.nix`, and published when `content/` changes.
 
 ## Tasks
 

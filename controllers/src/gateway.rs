@@ -232,6 +232,20 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Deletes the servers created from the web app, when the chart is uninstalled. Kubernetes
+/// deletes the Deployments and Services they own. Servers created otherwise, e.g. with
+/// kubectl, are left alone.
+pub async fn cleanup(client: Client, config: Config) -> anyhow::Result<()> {
+    let api = Api::<QuakeServer>::namespaced(client, &config.gateway.namespace);
+    let created = ListParams::default().labels(&format!("{CREATED_BY_LABEL}=gateway"));
+    for server in api.list(&created).await? {
+        let name = server.name_any();
+        info!(server = %name, "deleting server created from the web app");
+        api.delete(&name, &DeleteParams::background()).await?;
+    }
+    Ok(())
+}
+
 /// Resolves on Ctrl-C, or on SIGTERM, which Kubernetes sends to stop the pod.
 async fn shutdown_signal() {
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())

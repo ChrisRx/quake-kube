@@ -1,11 +1,12 @@
 name: Push Image
 
+# Every push to main pushes the images, tagged main and latest, and publishes
+# the Helm chart with the version in chart/Chart.yaml, replacing the published
+# one. The chart deploys the latest images.
 on:
   push:
     branches:
       - 'main'
-    tags:
-    - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -38,18 +39,14 @@ jobs:
       - name: Allow user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       # Builds the image for x86_64 and aarch64, cross compiling for aarch64, and
-      # pushes them as one multi-arch image tagged with the branch, latest on main,
-      # and the version for v* tags.
+      # pushes them as one multi-arch image tagged with the branch and latest.
       - run: nix run --impure .#manifests.${{ matrix.image }}
         env:
-          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           GITHUB_TOKEN: ${{ github.token }}
 
-  # Releases publish the Helm chart, versioned like their images, once the
-  # images are pushed:
-  #   helm install quake-kube oci://ghcr.io/chrisrx/quake-kube --version 1.2.0
+  # Publishes the chart once the images are pushed:
+  #   helm install quake-kube oci://ghcr.io/chrisrx/quake-kube
   chart:
-    if: github.ref_type == 'tag'
     needs: multiarch
     runs-on: ubuntu-latest
     permissions:
@@ -59,18 +56,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v23
-      # Our builds, such as the Rust dependencies and the web client, are
-      # cached so they're only rebuilt when they change. Content, images and
-      # downloads are left out, since they're large and quick to rebuild or
-      # fetch.
       - uses: cachix/cachix-action@v16
         with:
           name: quake-kube
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
           pushFilter: '(-content-[^/]*$|\.tar\.gz$|-layer$|\.zip$|\.pk3$|-source$)'
+      # The pods carry the commit, so helm upgrade restarts them with the newest
+      # images, which they pull since they're tagged latest.
+      - name: Note the commit in the chart
+        run: |
+          printf 'annotations:\n  quake.kube/commit: "%s"\n' "$GITHUB_SHA" >> chart/Chart.yaml
       - name: Push the chart
         run: |
           echo "$GITHUB_TOKEN" | nix develop .#ci --command helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          nix develop .#ci --command task chart:push VERSION="${GITHUB_REF_NAME#v}"
+          nix develop .#ci --command task chart:push
         env:
           GITHUB_TOKEN: ${{ github.token }}

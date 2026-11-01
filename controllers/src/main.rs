@@ -38,6 +38,7 @@ async fn main() -> Result<()> {
     let client = Client::try_default().await?;
     match role.as_deref() {
         Some("gateway") => gateway::run(client, config).await,
+        Some("cleanup") => gateway::cleanup(client, config).await,
         _ => quake_server_controller::run(client, config).await,
     }
 }
