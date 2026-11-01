@@ -40,6 +40,8 @@ let
     openarena = pkgs.callPackage ../content/openarena { };
     rocket-arena = pkgs.callPackage ../content/rocket-arena { };
     quake3-maps = pkgs.callPackage ../content/quake3-maps { };
+    ufreeze = pkgs.callPackage ../content/ufreeze { };
+    defrag = pkgs.callPackage ../content/defrag { };
   };
 
   packagesFor = target: rec {
@@ -114,6 +116,8 @@ in
     openarena-image = native.images.openarena;
     rocket-arena-image = native.images.rocket-arena;
     quake3-maps-image = native.images.quake3-maps;
+    ufreeze-image = native.images.ufreeze;
+    defrag-image = native.images.defrag;
   };
 
   manifests = {
@@ -126,5 +130,7 @@ in
     openarena = manifest "openarena" "chrisrx/quake-kube-openarena" content.openarena.version;
     rocket-arena = manifest "rocket-arena" "chrisrx/quake-kube-rocket-arena" content.rocket-arena.version;
     quake3-maps = manifest "quake3-maps" "chrisrx/quake-kube-quake3-maps" content.quake3-maps.version;
+    ufreeze = manifest "ufreeze" "chrisrx/quake-kube-ufreeze" content.ufreeze.version;
+    defrag = manifest "defrag" "chrisrx/quake-kube-defrag" content.defrag.version;
   };
 }

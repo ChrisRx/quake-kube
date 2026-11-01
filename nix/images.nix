@@ -79,4 +79,6 @@ in
   openarena = contentImage "quake-kube-openarena" content.openarena;
   rocket-arena = contentImage "quake-kube-rocket-arena" content.rocket-arena;
   quake3-maps = contentImage "quake-kube-quake3-maps" content.quake3-maps;
+  ufreeze = contentImage "quake-kube-ufreeze" content.ufreeze;
+  defrag = contentImage "quake-kube-defrag" content.defrag;
 }

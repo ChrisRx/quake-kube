@@ -84,14 +84,21 @@ gateway:
         - {name: Tournament, type: Tournament}
         - {name: Team Deathmatch, type: TeamDeathmatch}
         - {name: Capture The Flag, type: CaptureTheFlag}
-      maps: [q3dm1, q3dm7, q3dm17, q3tourney2]
-    - name: quake3-maps
-      title: Quake 3 Community Maps
-      gameTypes:
-        - {name: Free For All, type: FreeForAll}
-        - {name: Tournament, type: Tournament}
-        - {name: Team Deathmatch, type: TeamDeathmatch}
-      maps: [lun3dm5, q3deck, lsdm1, estatica, rpg3dm2, chiropterata]
+      maps:
+        # The demo's, which every server has.
+        - q3dm1
+        - q3dm7
+        - q3dm17
+        - q3tourney2
+        # Community maps from lvlworld.
+        - lun3dm5
+        - q3deck
+        - lsdm1
+        - estatica
+        - rpg3dm2
+        - chiropterata
+      # Without image volumes, only the demo's maps are offered.
+      mapsWithoutImages: [q3dm1, q3dm7, q3dm17, q3tourney2]
       spec:
         content:
           - image: ghcr.io/chrisrx/quake-kube-quake3-maps:1
@@ -167,6 +174,43 @@ gateway:
         game: {fsGame: arena, native: true}
         content:
           - image: ghcr.io/chrisrx/quake-kube-rocket-arena:1.76
+    - name: ufreeze
+      title: Ultra Freeze Tag
+      gameTypes:
+        # Freeze tag is a team game: frozen players are thawed by teammates.
+        - {name: Team Freeze, type: TeamDeathmatch}
+        - {name: Team Freeze With Grappling Hook, type: TeamDeathmatch, cvars: {g_grapple: "1"}}
+      maps:
+        - q3dm1
+        - q3dm7
+        - q3dm17
+        - q3tourney2
+        - lun3dm5
+        - q3deck
+        - lsdm1
+        - estatica
+        - rpg3dm2
+        - chiropterata
+      spec:
+        game: {fsGame: ufreeze}
+        content:
+          - image: ghcr.io/chrisrx/quake-kube-ufreeze:1.21
+          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:1
+    - name: defrag
+      title: DeFRaG
+      # A racing and trick jumping mod, so it has no bots. Its
+      # "game types" choose the physics, Quake 3's or CPMA's.
+      bots: false
+      gameTypes:
+        - {name: Vanilla Physics, cvars: {df_promode: "0"}}
+        - {name: CPM Physics, cvars: {df_promode: "1"}}
+      # The test maps DeFRaG ships with.
+      maps: [df-weapon1, df-shooter1, df-velopad1, df-black, df-black-grid]
+      spec:
+        game: {fsGame: defrag}
+        cvars: {pmove_fixed: "1"}
+        content:
+          - image: ghcr.io/chrisrx/quake-kube-defrag:1.91.31
     - name: openarena
       title: OpenArena
       gameTypes:
@@ -192,10 +236,24 @@ gateway:
         - oacmpdm5
         - oacmpdm8
         - oacmpdm9
+        # Quake 3's demo maps, and the community maps, which OpenArena plays with its
+        # own models and rules. Native OpenArena clients don't have the demo's
+        # files, but browsers download them.
+        - q3dm1
+        - q3dm7
+        - q3dm17
+        - q3tourney2
+        - lun3dm5
+        - q3deck
+        - lsdm1
+        - estatica
+        - rpg3dm2
+        - chiropterata
       spec:
         game: {fsGame: baseoa}
         content:
           - image: ghcr.io/chrisrx/quake-kube-openarena:0.8.8
+          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:1
     - name: openarena-ctf
       title: OpenArena CTF
       gameTypes:

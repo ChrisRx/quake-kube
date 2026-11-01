@@ -477,7 +477,7 @@ struct ServerView {
     /// Filled in once the server answers queries.
     hostname: Option<String>,
     map: Option<String>,
-    game_type: Option<&'static str>,
+    game_type: Option<String>,
     humans: Option<i32>,
     bots: Option<i32>,
     max_players: Option<i32>,
@@ -542,8 +542,12 @@ async fn list_servers(
                         .and_then(|server| server.hostname.clone())
                 }),
                 map: get("mapname"),
+                // Mods that choose their modes by cvars, like DeFRaG, are named by the
+                // preset's game type the server was created with.
                 game_type: number("gametype")
-                    .and_then(|n| game_type_name(get("game").as_deref(), n)),
+                    .and_then(|n| game_type_name(get("game").as_deref(), n))
+                    .map(String::from)
+                    .or_else(|| qs.annotations().get(GAME_TYPE_ANNOTATION).cloned()),
                 humans,
                 bots: number("clients")
                     .zip(humans)
@@ -593,6 +597,10 @@ fn game_type_name(game: Option<&str>, game_type: i32) -> Option<&'static str> {
         (Some("q3ut4"), 10) => "Freeze Tag",
         (Some("q3ut4"), 11) => "Gun Game",
         (Some("q3ut4"), _) => return None,
+        // DeFRaG leaves g_gametype alone and chooses its mode by df_gametype.
+        (Some("defrag"), _) => return None,
+        (Some("ufreeze"), 3) => "Team Freeze",
+        (Some("ufreeze"), 4) => "CTF Freeze",
         (Some("cpma"), -1) => "Hoonymode",
         (Some("cpma"), 1) => "Duel",
         (Some("cpma"), 2) => "Duel Arena",

@@ -27,6 +27,8 @@ These images are published for x86_64 and aarch64:
 | `ghcr.io/chrisrx/quake-kube-rocket-arena:1.76` | Rocket Arena 3, and its maps for CPMA's Clan Arena | `arena`, `cpma` |
 | `ghcr.io/chrisrx/quake-kube-openarena:0.8.8` | OpenArena 0.8.8 and the OpenArena Community Mappack Vol. 1 | `baseoa` |
 | `ghcr.io/chrisrx/quake-kube-quake3-maps:1` | Community maps for Quake 3 from lvlworld | `baseq3` |
+| `ghcr.io/chrisrx/quake-kube-ufreeze:1.21` | Ultra Freeze Tag 1.21 | `ufreeze` |
+| `ghcr.io/chrisrx/quake-kube-defrag:1.91.31` | DeFRaG 1.91.31 and its test maps | `defrag` |
 
 ### Native game code
 
@@ -183,7 +185,14 @@ maps, alongside the Quake 3 demo. Setting `gateway.presets` replaces them.
 Presets with content images need image volumes, so on clusters older than
 Kubernetes 1.35 the chart leaves them out. Set `gateway.imagePresets` to `true`
 on 1.33 or 1.34 with the `ImageVolume` feature gate, or to `false` to never
-offer them.
+offer them. A preset with `mapsWithoutImages` is kept without its images
+instead, offering only those maps, like the Quake 3 preset, which offers just
+the demo's maps then.
+
+Maps for Quake 3 also play in OpenArena, which runs on top of Quake 3's
+`baseq3`, so the demo's maps and the Quake 3 community maps image are in the
+OpenArena preset too. Native OpenArena clients don't have the demo's files,
+though browsers download them.
 
 ## Content that needs the full game
 

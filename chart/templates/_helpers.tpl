@@ -72,12 +72,25 @@ can't mount them (gateway.imagePresets).
 {{- end -}}
 {{- $presets := list -}}
 {{- range .Values.gateway.presets -}}
+{{- $preset := omit . "mapsWithoutImages" -}}
 {{- $hasImages := false -}}
 {{- range (dig "spec" "content" list .) -}}
 {{- if .image }}{{ $hasImages = true }}{{ end -}}
 {{- end -}}
 {{- if or $images (not $hasImages) -}}
-{{- $presets = append $presets . -}}
+{{- $presets = append $presets $preset -}}
+{{- else if .mapsWithoutImages -}}
+{{- /* Without image volumes, the preset's maps that don't need its images. */ -}}
+{{- $content := list -}}
+{{- range (dig "spec" "content" list .) -}}
+{{- if not .image }}{{ $content = append $content . }}{{ end -}}
+{{- end -}}
+{{- $spec := omit (deepCopy (default dict .spec)) "content" -}}
+{{- if $content }}{{ $_ := set $spec "content" $content }}{{ end -}}
+{{- $fallback := deepCopy $preset -}}
+{{- $_ := set $fallback "maps" .mapsWithoutImages -}}
+{{- $_ := set $fallback "spec" $spec -}}
+{{- $presets = append $presets $fallback -}}
 {{- end -}}
 {{- end -}}
 {{- toYaml $presets -}}
