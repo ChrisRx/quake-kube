@@ -1,16 +1,21 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"crypto/subtle"
 	_ "embed"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -55,7 +60,21 @@ type Server struct {
 	cmd *Cmd
 	// game is the directory of the game the server runs, where its config is written.
 	game string
+
+	// mu guards applied, the config the server is running with, which changes when the config
+	// file does or the gateway sends one.
+	mu      sync.Mutex
+	applied *Config
+	// rconAddr is where the server's console is reached from here.
+	rconAddr string
+	ctx      context.Context
 }
+
+// liveConfigName is the config run from the console to change a running server.
+const liveConfigName = "quake-kube-live.cfg"
+
+// ErrUnauthorized is returned for a config sent without the server's rcon password.
+var ErrUnauthorized = errors.New("unauthorized")
 
 func (s *Server) Start(ctx context.Context) error {
 	if s.Addr == "" {
@@ -129,7 +148,11 @@ func (s *Server) Start(ctx context.Context) error {
 		return s.cmd.Wait()
 	}
 
-	if err := s.reload(); err != nil {
+	data, err := cfg.Marshal()
+	if err != nil {
+		return err
+	}
+	if err := s.writeServerConfig(data); err != nil {
 		return err
 	}
 	if err := s.cmd.Start(); err != nil {
@@ -146,6 +169,11 @@ func (s *Server) Start(ctx context.Context) error {
 	if net.ParseIP(host).IsUnspecified() {
 		addr = net.JoinHostPort("127.0.0.1", port)
 	}
+	s.mu.Lock()
+	s.ctx = ctx
+	s.rconAddr = addr
+	s.applied = cfg
+	s.mu.Unlock()
 	go run.Every(ctx, func() {
 		status, err := quakenet.GetStatus(addr)
 		if err != nil {
@@ -173,18 +201,13 @@ func (s *Server) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ch:
-			if err := s.reload(); err != nil {
+			cfg, err := ReadConfigFromFile(s.ConfigFile)
+			if err != nil {
 				return err
 			}
-			configReloads.Inc()
-			if err := s.cmd.Restart(ctx); err != nil {
+			if err := s.apply(cfg); err != nil {
 				return err
 			}
-			go func() {
-				if err := s.cmd.Wait(); err != nil {
-					log.Println(err)
-				}
-			}()
 		case <-ctx.Done():
 			// The shutdown handler has already warned players with GracefulStop.
 			return ctx.Err()
@@ -271,25 +294,123 @@ func (s *Server) HardStop() {
 	log.Printf("process %d still running after being killed\n", s.cmd.Process.Pid)
 }
 
-func (s *Server) reload() error {
-	cfg, err := ReadConfigFromFile(s.ConfigFile)
-	if err != nil {
-		return err
-	}
+// apply brings the running server in line with cfg. What the game can change while it runs,
+// like the map rotation, game type, limits and bots, is changed from its console, which
+// reloads the map without disconnecting anyone. Anything else, like a different mod,
+// restarts the server.
+func (s *Server) apply(cfg *Config) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	data, err := cfg.Marshal()
 	if err != nil {
 		return err
 	}
-	return s.writeServerConfig(data)
+	current, err := s.applied.Marshal()
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(data, current) {
+		// E.g. the config file catching up with what the gateway sent.
+		return nil
+	}
+	if err := s.writeServerConfig(data); err != nil {
+		return err
+	}
+	configReloads.Inc()
+	if cfg.Game == s.applied.Game && cfg.Native == s.applied.Native {
+		err := s.applyLive(cfg)
+		if err == nil {
+			log.Println("applied config from the console")
+			s.applied = cfg
+			return nil
+		}
+		log.Printf("applying config from the console failed, restarting: %v", err)
+	}
+	s.applied = cfg
+	if err := s.cmd.Restart(s.ctx); err != nil {
+		return err
+	}
+	go func() {
+		if err := s.cmd.Wait(); err != nil {
+			log.Println(err)
+		}
+	}()
+	return nil
+}
+
+// applyLive runs the config from the server's console. Commands are left out, since they're
+// only run once the server starts, e.g. adding bots.
+func (s *Server) applyLive(cfg *Config) error {
+	live := *cfg
+	live.Commands = nil
+	data, err := live.Marshal()
+	if err != nil {
+		return err
+	}
+	if err := s.writeFile(liveConfigName, data); err != nil {
+		return err
+	}
+	resp, err := quakenet.SendServerCommandWithTimeout(s.rconAddr, s.applied.ServerConfig.Password, "exec "+liveConfigName, 2*time.Second)
+	if err != nil {
+		return err
+	}
+	if bytes.Contains(resp, []byte("Bad rconpassword")) {
+		return errors.New("the console refused the rcon password")
+	}
+	return nil
+}
+
+// ApplyConfig applies a config sent by the gateway, so a change takes effect without waiting
+// for the config file to catch up, which can take a minute. Only someone with the server's
+// rcon password can send one.
+func (s *Server) ApplyConfig(data []byte, password string) error {
+	s.mu.Lock()
+	applied := s.applied
+	s.mu.Unlock()
+	if applied == nil {
+		return errors.New("the server hasn't started")
+	}
+	if subtle.ConstantTimeCompare([]byte(password), []byte(applied.ServerConfig.Password)) != 1 {
+		return ErrUnauthorized
+	}
+	cfg, err := ParseConfig(data)
+	if err != nil {
+		return err
+	}
+	return s.apply(cfg)
+}
+
+// ConfigHandler accepts configs from the gateway, with the rcon password as a bearer token.
+func (s *Server) ConfigHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		password, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		data, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		switch err := s.ApplyConfig(data, password); {
+		case errors.Is(err, ErrUnauthorized):
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+		case err != nil:
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	})
 }
 
 // writeServerConfig writes server.cfg in the game's directory, which is searched first.
 func (s *Server) writeServerConfig(data []byte) error {
+	return s.writeFile("server.cfg", data)
+}
+
+func (s *Server) writeFile(name string, data []byte) error {
 	dir := filepath.Join(s.Dir, s.game)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "server.cfg"), data, 0644)
+	return os.WriteFile(filepath.Join(dir, name), data, 0644)
 }
 
 func (s *Server) watch(ctx context.Context) (<-chan struct{}, error) {

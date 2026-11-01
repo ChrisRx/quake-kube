@@ -11,6 +11,7 @@ mod auth;
 mod config;
 mod error;
 mod gateway;
+mod levelshots;
 mod master;
 pub mod prelude;
 mod protocol;

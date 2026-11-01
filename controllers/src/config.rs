@@ -35,6 +35,13 @@ pub struct GatewayConfig {
     /// How many of those each person can have at once, when the gateway knows who people are.
     #[serde(default)]
     pub max_servers_per_user: Option<usize>,
+    /// Servers created from the web app are deleted after nobody has played on them for this
+    /// long, e.g. "30m". Empty or "0" keeps them until someone deletes them.
+    #[serde(
+        default = "GatewayConfig::default_idle_timeout",
+        deserialize_with = "deserialize_duration"
+    )]
+    pub idle_timeout: Option<Duration>,
     /// The games the web app offers when creating a server.
     #[serde(default = "GatewayConfig::default_presets")]
     pub presets: Vec<Preset>,
@@ -145,6 +152,10 @@ impl GatewayConfig {
         10
     }
 
+    fn default_idle_timeout() -> Option<Duration> {
+        Some(Duration::from_secs(30 * 60))
+    }
+
     fn default_client_dir() -> std::path::PathBuf {
         "/usr/share/quake-kube/client".into()
     }
@@ -220,6 +231,7 @@ impl Default for GatewayConfig {
             namespace: Self::default_namespace(),
             max_servers: Self::default_max_servers(),
             max_servers_per_user: None,
+            idle_timeout: Self::default_idle_timeout(),
             presets: Self::default_presets(),
             webtransport: WebTransportConfig::default(),
             auth: AuthConfig::default(),
@@ -328,6 +340,43 @@ impl<'de> Deserialize<'de> for PortRange {
     }
 }
 
+/// Parses a duration of hours, minutes and seconds, e.g. "1h30m" or "45s". Zero is None.
+fn parse_duration(s: &str) -> Option<Option<Duration>> {
+    let s = s.trim();
+    if s.is_empty() || s == "0" {
+        return Some(None);
+    }
+    let mut secs = 0u64;
+    let mut number = String::new();
+    for c in s.chars() {
+        if c.is_ascii_digit() {
+            number.push(c);
+            continue;
+        }
+        let unit = match c {
+            'h' => 3600,
+            'm' => 60,
+            's' => 1,
+            _ => return None,
+        };
+        secs += number.parse::<u64>().ok()? * unit;
+        number.clear();
+    }
+    if !number.is_empty() {
+        return None;
+    }
+    Some((secs > 0).then(|| Duration::from_secs(secs)))
+}
+
+fn deserialize_duration<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Duration>, D::Error> {
+    let s = Option::<String>::deserialize(deserializer)?.unwrap_or_default();
+    parse_duration(&s).ok_or_else(|| {
+        serde::de::Error::custom(format!("invalid duration {s:?}, expected e.g. 30m or 1h"))
+    })
+}
+
 impl Config {
     pub fn load() -> anyhow::Result<Self> {
         let mut config: Config = match std::env::var("QUAKE_KUBE_CONFIG") {
@@ -384,5 +433,24 @@ presets:
         assert_eq!(cpma.game_types[0].cvars["mode_start"], "1v1");
         // Without presets, the web app offers the Quake 3 demo.
         assert_eq!(GatewayConfig::default().presets[0].name, "quake3");
+    }
+
+    #[test]
+    fn parses_durations() {
+        let minutes = |m: u64| Some(Some(Duration::from_secs(m * 60)));
+        assert_eq!(parse_duration("30m"), minutes(30));
+        assert_eq!(parse_duration("1h30m"), minutes(90));
+        assert_eq!(parse_duration("45s"), Some(Some(Duration::from_secs(45))));
+        assert_eq!(parse_duration(""), Some(None));
+        assert_eq!(parse_duration("0"), Some(None));
+        assert_eq!(parse_duration("0m"), Some(None));
+        assert_eq!(parse_duration("30"), None);
+        assert_eq!(parse_duration("1d"), None);
+        let config: GatewayConfig = serde_yaml_ng::from_str("idleTimeout: 2h").unwrap();
+        assert_eq!(config.idle_timeout, minutes(120).unwrap());
+        let config: GatewayConfig = serde_yaml_ng::from_str("idleTimeout: null").unwrap();
+        assert_eq!(config.idle_timeout, None);
+        let config: GatewayConfig = serde_yaml_ng::from_str("port: 80").unwrap();
+        assert_eq!(config.idle_timeout, minutes(30).unwrap());
     }
 }

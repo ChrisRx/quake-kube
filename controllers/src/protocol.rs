@@ -2,6 +2,7 @@
 //! master server.
 
 use rand::distr::{Alphanumeric, SampleString};
+use serde::Serialize;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use tokio::net::UdpSocket;
@@ -38,6 +39,66 @@ pub async fn get_info(
     addr: SocketAddr,
     wait: Duration,
 ) -> std::io::Result<BTreeMap<String, String>> {
+    let challenge = Alphanumeric.sample_string(&mut rand::rng(), 12);
+    query(addr, wait, &format!("getinfo {challenge}"), |cmd| {
+        let info = parse_info(cmd.strip_prefix("infoResponse\n")?);
+        (info.get("challenge") == Some(&challenge)).then_some(info)
+    })
+    .await
+}
+
+/// A player in a server's status. Bots are only told apart by their ping, which ioquake3
+/// reports as 0 for them.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Player {
+    pub name: String,
+    pub score: i32,
+    pub ping: i32,
+}
+
+/// A server's status: its settings and who's playing.
+#[derive(Clone, Debug, Default)]
+pub struct Status {
+    pub info: BTreeMap<String, String>,
+    pub players: Vec<Player>,
+}
+
+/// Sends `getstatus` to a server and returns its settings and players.
+pub async fn get_status(addr: SocketAddr, wait: Duration) -> std::io::Result<Status> {
+    let challenge = Alphanumeric.sample_string(&mut rand::rng(), 12);
+    query(addr, wait, &format!("getstatus {challenge}"), |cmd| {
+        let status = parse_status(cmd.strip_prefix("statusResponse\n")?);
+        // Older servers don't echo the challenge.
+        let echoed = status.info.get("challenge");
+        (echoed.is_none() || echoed == Some(&challenge)).then_some(status)
+    })
+    .await
+}
+
+/// Parses a status response: an info string, then a line per player of the form
+/// `score ping "name"`.
+fn parse_status(s: &str) -> Status {
+    let mut lines = s.lines();
+    let info = parse_info(lines.next().unwrap_or_default());
+    let players = lines
+        .filter_map(|line| {
+            let mut parts = line.splitn(3, ' ');
+            let score = parts.next()?.parse().ok()?;
+            let ping = parts.next()?.parse().ok()?;
+            let name = parts.next()?.trim_matches(['"', '\0']).to_owned();
+            Some(Player { name, score, ping })
+        })
+        .collect();
+    Status { info, players }
+}
+
+/// Sends an out-of-band command and returns the first reply parse accepts.
+async fn query<T>(
+    addr: SocketAddr,
+    wait: Duration,
+    command: &str,
+    parse: impl Fn(&str) -> Option<T>,
+) -> std::io::Result<T> {
     let bind: SocketAddr = if addr.is_ipv4() {
         ([0, 0, 0, 0], 0).into()
     } else {
@@ -45,26 +106,22 @@ pub async fn get_info(
     };
     let socket = UdpSocket::bind(bind).await?;
     socket.connect(addr).await?;
-    let challenge = Alphanumeric.sample_string(&mut rand::rng(), 12);
-    socket
-        .send(&oob(format!("getinfo {challenge}").as_bytes()))
-        .await?;
+    socket.send(&oob(command.as_bytes())).await?;
 
-    let mut buf = [0u8; 2048];
+    // Status responses carry a line per player, so they can be larger than info responses.
+    let mut buf = [0u8; 16384];
     let deadline = tokio::time::Instant::now() + wait;
     loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         let len = timeout(remaining, socket.recv(&mut buf))
             .await
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::TimedOut))??;
-        let Some(info) = parse_oob(&buf[..len])
-            .and_then(|cmd| cmd.strip_prefix("infoResponse\n"))
-            .map(parse_info)
-        else {
-            continue;
-        };
-        if info.get("challenge") == Some(&challenge) {
-            return Ok(info);
+        // Player names can have bytes that aren't UTF-8.
+        let text = buf[..len]
+            .strip_prefix(OOB_PREFIX)
+            .map(String::from_utf8_lossy);
+        if let Some(reply) = text.as_deref().and_then(&parse) {
+            return Ok(reply);
         }
     }
 }
@@ -117,6 +174,30 @@ mod tests {
         assert_eq!(info["challenge"], "abc");
         assert_eq!(info["hostname"], "quake kube");
         assert_eq!(info["clients"], "3");
+    }
+
+    #[test]
+    fn parses_status_response() {
+        let status = parse_status(
+            "\\mapname\\q3dm17\\sv_maxclients\\8\n12 48 \"^1Ranger\"\n3 0 \"Sarge\"\nbad line\n",
+        );
+        assert_eq!(status.info["mapname"], "q3dm17");
+        assert_eq!(
+            status.players,
+            vec![
+                Player {
+                    name: "^1Ranger".to_owned(),
+                    score: 12,
+                    ping: 48,
+                },
+                Player {
+                    name: "Sarge".to_owned(),
+                    score: 3,
+                    ping: 0,
+                },
+            ]
+        );
+        assert!(parse_status("\\mapname\\q3dm1\n").players.is_empty());
     }
 
     #[test]

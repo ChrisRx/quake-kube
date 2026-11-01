@@ -1,7 +1,7 @@
 # Authentication
 
-By default, anyone who can reach the web app can create servers and delete the
-ones created there. To know who people are, put a proxy that signs them in in
+By default, anyone who can reach the web app can create servers and change or
+delete the ones created there. To know who people are, put a proxy that signs them in in
 front of the gateway and tell the gateway how to read who they are, with
 `gateway.auth.mode`:
 
@@ -19,11 +19,13 @@ cluster already uses.
 
 With authentication on, a server created from the web app belongs to whoever
 created it, which is recorded in its `quake.kube/owner` annotation. Only they
-can delete it from the web app, along with admins.
+can change or delete it from the web app, or change it from the game's pause
+menu while playing, along with admins.
 
 Admins are whoever Kubernetes RBAC lets delete QuakeServers in the web app's
 namespace, which the gateway asks the API server about. So anyone who could
-already delete servers with `kubectl` can delete them from the web app too, and
+already delete servers with `kubectl` can change and delete them from the web
+app too, and
 admins can be granted in the same way as other access to the cluster. The chart
 has a `quake-kube-admin` ClusterRole for this, and binds it to the users and
 groups in `gateway.auth.admins`:
@@ -37,7 +39,7 @@ gateway:
 ```
 
 Servers created before authentication was turned on have no owner, so only
-admins can delete them.
+admins can change or delete them.
 
 `gateway.maxServersPerUser` limits how many servers each person can have at
 once, alongside `gateway.maxServers` for everyone together. Admins have the same

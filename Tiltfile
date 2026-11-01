@@ -55,6 +55,9 @@ k8s_yaml(helm(
     set=[
         'controller.logLevel=info\\,quake_kube_controller=debug',
         'gateway.logLevel=info\\,quake_kube_controller=debug\\,quake_kube_controller::webtransport=trace',
+        # The cleanup is a Helm hook for uninstalling, which Tilt runs as a plain
+        # Job on every deploy, deleting the servers created from the web app.
+        'gateway.deleteServersOnUninstall=false',
         'gateway.ingress.enabled=true',
         'gateway.ingress.host=' + WEB_HOST,
         # Browsers only offer WebTransport to HTTPS pages. Trust the local CA

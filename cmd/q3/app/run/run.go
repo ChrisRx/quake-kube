@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	"github.com/soheilhy/cmux"
 	"github.com/spf13/cobra"
 	"go.chrisrx.dev/x/context"
@@ -85,8 +86,10 @@ func NewCommand() *cobra.Command {
 			// The pod's gRPC health checks and the HTTP server share a port.
 			m.Register(content.NewRPCServer(ctx, opts.ServerAddr)).
 				Match(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"))
-			m.Register(content.NewHTTPServer(ctx, opts.AssetsDir, opts.ServerAddr)).
-				Any()
+			h := content.NewHTTPServer(ctx, opts.AssetsDir, opts.ServerAddr)
+			// The gateway sends changes to the config here, so they apply right away.
+			h.POST("/config", echo.WrapHandler(qs.ConfigHandler()))
+			m.Register(h).Any()
 			fmt.Printf("Starting server %s\n", opts.ClientAddr)
 			return m.ServeAndWait()
 		},

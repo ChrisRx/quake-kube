@@ -19,6 +19,7 @@ data:
       {{- if not (kindIs "invalid" .Values.gateway.maxServersPerUser) }}
       maxServersPerUser: {{ .Values.gateway.maxServersPerUser }}
       {{- end }}
+      idleTimeout: {{ .Values.gateway.idleTimeout | default "" | toString | quote }}
       presets:
         {{- include "chart.presets" . | nindent 8 }}
       {{- with .Values.gateway.auth }}

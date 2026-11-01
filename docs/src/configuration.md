@@ -80,10 +80,18 @@ documents its settings, including:
   which need Kubernetes 1.35
 - `gateway.auth`: how the gateway knows who people are, for server owners and
   admins (see [Authentication](authentication.md))
+- `gateway.namespace`: where the web app creates servers, the release namespace
+  by default. The gateway reads Secrets there, for servers' rcon passwords, so
+  changes made from the web app apply right away, and runs the pods that make
+  thumbnails of each game's maps, which it keeps in ConfigMaps. Use a namespace
+  of its own if the release namespace has other Secrets.
 - `gateway.maxServers`: how many servers the web app can create, or 0 to turn
   creating servers off
 - `gateway.maxServersPerUser`: how many each person can have, with
   [authentication](authentication.md)
+- `gateway.idleTimeout`: how long a server created from the web app can go
+  without players before it's deleted (30m by default), or empty to keep
+  servers until someone deletes them
 - `gameServers.exposure`: how native clients reach game servers, and the port
   range servers get their external ports from when they share an address
 - `master.service`: how native clients reach the master server

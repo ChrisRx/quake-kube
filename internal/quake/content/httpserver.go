@@ -3,11 +3,13 @@ package content
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +20,9 @@ import (
 
 	quakenet "github.com/ChrisRx/quake-kube/internal/quake/net"
 )
+
+// mapName matches the map names the server config allows.
+var mapName = regexp.MustCompile(`^[A-Za-z0-9_.+-]+$`)
 
 type HTTPServer struct {
 	*echo.Echo
@@ -99,6 +104,22 @@ func NewHTTPServer(ctx context.Context, assetsDir, serverAddr string) *HTTPServe
 		defer r.Close()
 		c.Response().Header().Set(echo.HeaderContentLength, strconv.FormatInt(size, 10))
 		return c.Stream(http.StatusOK, echo.MIMEOctetStream, r)
+	})
+	// The picture of each map the game shows while loading it.
+	e.GET("/levelshots/:map", func(c echo.Context) error {
+		name, ok := strings.CutSuffix(c.Param("map"), ".jpg")
+		if !ok || !mapName.MatchString(name) {
+			return c.String(http.StatusNotFound, "file not found")
+		}
+		data, err := ReadLevelshot(assetsDir, name)
+		if errors.Is(err, ErrNoLevelshot) {
+			return c.String(http.StatusNotFound, "file not found")
+		}
+		if err != nil {
+			return err
+		}
+		c.Response().Header().Set(echo.HeaderCacheControl, "public, max-age=3600")
+		return c.Blob(http.StatusOK, "image/jpeg", data)
 	})
 	e.GET("/info", func(c echo.Context) error {
 		m, err := quakenet.GetInfo(serverAddr)

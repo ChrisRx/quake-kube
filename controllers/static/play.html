@@ -131,6 +131,190 @@
         margin-top: 4px;
         color: #d9a441;
       }
+      /* Waiting for the server to come back after switching games, in place of the game. */
+      #join.waiting form > :not(h1, #status, a) {
+        display: none !important;
+      }
+      #join.waiting #status::before {
+        content: "";
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        margin-right: 10px;
+        border: 2px solid #3a332c;
+        border-top-color: #e0562b;
+        border-radius: 50%;
+        vertical-align: -1px;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      /* The owner's server settings, over the pause menu. */
+      #pause .panel.settings {
+        box-sizing: border-box;
+        width: min(640px, calc(100vw - 32px));
+        max-height: calc(100vh - 32px);
+        overflow-y: auto;
+      }
+      .settings form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 14px;
+      }
+      .settings .fields {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+      }
+      .settings label,
+      .settings .field-label {
+        display: grid;
+        gap: 6px;
+        font: 11px ui-monospace, monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #a39a8f;
+      }
+      .settings select,
+      .settings input {
+        width: 100%;
+        min-width: 0;
+        padding: 9px 10px;
+        font: 15px system-ui, sans-serif;
+        color: #e8e2d9;
+        background: #1b1916;
+        border: 1px solid #3a332c;
+        border-radius: 0;
+      }
+      .settings select:focus,
+      .settings input:focus {
+        outline: 2px solid #e0562b;
+        outline-offset: -1px;
+      }
+      .settings input[type="number"] {
+        appearance: textfield;
+        -moz-appearance: textfield;
+        text-align: center;
+      }
+      .settings input[type="number"]::-webkit-inner-spin-button,
+      .settings input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      .settings .stepper {
+        display: flex;
+      }
+      #pause .settings .stepper button {
+        flex: none;
+        width: 36px;
+        padding: 0;
+        font: 18px/1 ui-monospace, monospace;
+        letter-spacing: 0;
+        color: #a39a8f;
+        background: #1b1916;
+        border: 1px solid #3a332c;
+      }
+      #pause .settings .stepper button:hover {
+        color: #e8e2d9;
+        background: #3a332c;
+      }
+      .settings .stepper button:first-child {
+        border-right: 0;
+      }
+      .settings .stepper button:last-child {
+        border-left: 0;
+      }
+      .settings .maps {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+        /* Tiles keep their size, scrolling rather than shrinking when there are many. */
+        grid-auto-rows: max-content;
+        gap: 8px;
+        max-height: 268px;
+        overflow-y: auto;
+      }
+      #pause .settings .map {
+        display: grid;
+        gap: 0;
+        padding: 0;
+        font: 12px/1 ui-monospace, monospace;
+        letter-spacing: 0;
+        text-transform: none;
+        color: #e8e2d9;
+        background: #1b1916;
+        border: 1px solid #3a332c;
+        overflow: hidden;
+      }
+      #pause .settings .map:hover {
+        border-color: #a39a8f;
+        background: #1b1916;
+      }
+      #pause .settings .map[aria-pressed="true"] {
+        border-color: #e0562b;
+        outline: 1px solid #e0562b;
+      }
+      .settings .map .shot {
+        aspect-ratio: 4 / 3;
+        background: #26221e center / cover no-repeat;
+      }
+      /* A map whose pak has no levelshot. */
+      .settings .map .shot.missing {
+        display: grid;
+        place-items: center;
+        background: repeating-linear-gradient(135deg, #221f1b 0 8px, #1b1916 8px 16px);
+      }
+      .settings .map .shot.missing::after {
+        content: "No picture";
+        font: 11px ui-monospace, monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #6f675e;
+      }
+      .settings .map span {
+        padding: 6px;
+        line-height: 1.3;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .settings .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      #pause .settings .actions button {
+        padding: 10px 18px;
+      }
+      #pause .settings button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #pause .settings .warning {
+        color: #d9a441;
+      }
+      #pause .settings .error {
+        color: #e5675c;
+      }
+      #pause .settings p:empty {
+        display: none;
+      }
+      #notice {
+        position: fixed;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: max-content;
+        max-width: calc(100vw - 32px);
+        padding: 10px 16px;
+        font: 14px system-ui, sans-serif;
+        color: #e8e2d9;
+        background: rgba(12, 11, 10, 0.92);
+        border: 1px solid #3a332c;
+        border-top: 2px solid #e0562b;
+      }
     </style>
     <script>
       const server = {
@@ -151,6 +335,9 @@
 
       // From the signed-in user's email address, for people who haven't chosen a name.
       const suggestedName = {{SUGGESTED_NAME}};
+
+      // The server's settings and the games it can switch to, when the viewer can change them.
+      const manage = {{MANAGE}};
     </script>
     <script src="/static/gamesocket.js"></script>
     <script src="/static/paks.js"></script>
@@ -177,14 +364,42 @@
       </form>
     </div>
     <div id="pause" hidden>
-      <div class="panel">
+      <div class="panel" id="pause-menu">
         <h1 id="pause-title">Ready</h1>
         <button id="resume">Play</button>
         <button id="fullscreen" class="secondary">Full screen</button>
+        <button id="open-settings" class="secondary" hidden>Server settings</button>
         <button id="leave" class="secondary">Leave server</button>
         <p id="pause-hint">Esc opens the game's menu.</p>
       </div>
+      <div class="panel settings" id="settings" hidden>
+        <h1>Server settings</h1>
+        <form id="settings-form">
+          <div class="fields">
+            <label>Game <select name="preset" id="s-preset"></select></label>
+            <label>Mode <select name="gameType" id="s-mode"></select></label>
+          </div>
+          <p class="warning" id="s-switch"></p>
+          <div class="field-label" id="s-maps-label">Map
+            <div class="maps" id="s-maps" role="group" aria-labelledby="s-maps-label"></div>
+          </div>
+          <div class="fields">
+            <label id="s-bots">Bots <input name="bots" type="number" min="0" max="16" inputmode="numeric"></label>
+            <label>Frag limit <input name="fragLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-step="5" data-start="20"></label>
+            <label>Time limit, min <input name="timeLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-step="5" data-start="10"></label>
+            <label>Capture limit <input name="captureLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-start="8"></label>
+            <label>Max players <input name="maxPlayers" type="number" min="1" max="64" placeholder="Default" inputmode="numeric" data-start="8"></label>
+          </div>
+          <p id="s-note">Changes apply right away and reload the map. Players stay connected.</p>
+          <p class="error" id="s-error" aria-live="polite"></p>
+          <div class="actions">
+            <button type="button" class="secondary" id="s-back">Back</button>
+            <button type="submit" id="s-apply">Apply</button>
+          </div>
+        </form>
+      </div>
     </div>
+    <div id="notice" role="status" hidden></div>
 
     <script type="module">
       const form = document.querySelector("#join form");
@@ -227,6 +442,7 @@
       let playing = false;
 
       function showPause() {
+        closeSettings();
         document.getElementById("pause-title").textContent = playing ? "Paused" : "Ready";
         document.getElementById("resume").textContent = playing ? "Resume" : "Play";
         document.getElementById("pause-hint").textContent = "Esc opens the game's menu.";
@@ -254,9 +470,10 @@
           showPause();
         }
       });
-      // A click anywhere outside the menu plays too.
+      // A click anywhere outside the menu plays too, unless the owner is changing settings.
+      const settingsPanel = document.getElementById("settings");
       pause.addEventListener("click", (event) => {
-        if (event.target === pause) resume();
+        if (event.target === pause && settingsPanel.hidden) resume();
       });
       document.getElementById("resume").addEventListener("click", resume);
       // The whole page goes full screen rather than the engine's canvas, so this menu still
@@ -272,6 +489,12 @@
         window.addEventListener(
           type,
           (event) => {
+            // The settings' fields get the keys, and Esc goes back to the menu.
+            if (!pause.hidden && !settingsPanel.hidden) {
+              event.stopImmediatePropagation();
+              if (type === "keydown" && event.key === "Escape") closeSettings();
+              return;
+            }
             if (pause.hidden || event.key === "Escape") {
               if (!pause.hidden && type === "keydown") {
                 pause.hidden = true;
@@ -285,6 +508,211 @@
           true,
         );
       }
+      // The owner's settings, which change the server while everyone plays.
+      const settingsForm = document.getElementById("settings-form");
+      const presetSelect = document.getElementById("s-preset");
+      const pauseMenu = document.getElementById("pause-menu");
+      let chosenMap = null;
+
+      function closeSettings() {
+        settingsPanel.hidden = true;
+        pauseMenu.hidden = false;
+      }
+
+      // Puts − and + buttons around a number field, like the web app's.
+      function addStepper(input) {
+        const step = Number(input.dataset.step || 1);
+        const min = Number(input.min);
+        const max = Number(input.max);
+        const start = Number(input.dataset.start ?? min);
+        const optional = input.placeholder === "Default";
+        const label = input.closest("label").firstChild.textContent.trim().toLowerCase();
+        const button = (text, name, dir) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = text;
+          b.tabIndex = -1;
+          b.setAttribute("aria-label", `${name} ${label}`);
+          b.addEventListener("click", () => {
+            if (input.value === "") {
+              if (dir > 0) input.value = start;
+            } else {
+              const value = Number(input.value) + dir * step;
+              input.value = value < min ? (optional ? "" : min) : Math.min(value, max);
+            }
+          });
+          return b;
+        };
+        const stepper = document.createElement("span");
+        stepper.className = "stepper";
+        input.replaceWith(stepper);
+        stepper.append(button("\u2212", "Less", -1), input, button("+", "More", 1));
+      }
+
+      const currentPreset = () => manage.presets.find((p) => p.name === manage.settings.preset);
+
+      // Offers the chosen game's modes and maps, with the gateway's thumbnails of each game's
+      // maps.
+      function showSettingsPreset(map) {
+        const preset = manage.presets.find((p) => p.name === presetSelect.value);
+        document.getElementById("s-mode").replaceChildren(
+          ...preset.gameTypes.map((name) => new Option(name, name)),
+        );
+        chosenMap = preset.maps.includes(map) ? map : preset.maps[0];
+        const sameGame = preset.name === manage.settings.preset;
+        document.getElementById("s-maps").replaceChildren(
+          ...preset.maps.map((name) => {
+            const tile = document.createElement("button");
+            tile.type = "button";
+            tile.className = "map";
+            tile.setAttribute("aria-pressed", String(name === chosenMap));
+            const shot = document.createElement("div");
+            shot.className = "shot";
+            const url = `/api/presets/${encodeURIComponent(preset.name)}/levelshots/${name.toLowerCase()}.jpg`;
+            const img = new Image();
+            img.onload = () => (shot.style.backgroundImage = `url("${url}")`);
+            img.onerror = () => shot.classList.add("missing");
+            img.src = url;
+            const label = document.createElement("span");
+            label.textContent = name;
+            tile.append(shot, label);
+            tile.addEventListener("click", () => {
+              chosenMap = name;
+              for (const other of tile.parentElement.children) {
+                other.setAttribute("aria-pressed", String(other === tile));
+              }
+            });
+            return tile;
+          }),
+        );
+        const bots = document.getElementById("s-bots");
+        bots.hidden = !preset.bots;
+        document.getElementById("s-switch").textContent = sameGame
+          ? ""
+          : `Switching to ${preset.title} restarts the server. Everyone rejoins once it's back, in a minute or so.`;
+        document.getElementById("s-note").hidden = !sameGame;
+      }
+
+      function openSettings() {
+        const settings = manage.settings;
+        settingsForm.reset();
+        presetSelect.value = currentPreset() ? settings.preset : manage.presets[0].name;
+        showSettingsPreset(settings.map);
+        for (const name of ["gameType", "bots", "fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {
+          if (settings[name] != null) settingsForm.elements.namedItem(name).value = settings[name];
+        }
+        document.getElementById("s-error").textContent = "";
+        document.getElementById("s-note").textContent =
+          "Changes apply right away and reload the map. Players stay connected.";
+        document.getElementById("s-apply").disabled = false;
+        pauseMenu.hidden = true;
+        settingsPanel.hidden = false;
+        presetSelect.focus();
+      }
+
+      if (manage && manage.presets.length > 0) {
+        for (const input of settingsForm.querySelectorAll('input[type="number"]')) addStepper(input);
+        presetSelect.replaceChildren(...manage.presets.map((p) => new Option(p.title, p.name)));
+        presetSelect.addEventListener("change", () => showSettingsPreset(chosenMap));
+        document.getElementById("open-settings").hidden = false;
+        document.getElementById("open-settings").addEventListener("click", openSettings);
+        document.getElementById("s-back").addEventListener("click", closeSettings);
+        settingsForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const data = { ...manage.settings, ...Object.fromEntries(new FormData(settingsForm)) };
+          data.map = chosenMap;
+          data.bots = Number(data.bots || 0);
+          for (const name of ["fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {
+            data[name] = data[name] ? Number(data[name]) : null;
+          }
+          const apply = document.getElementById("s-apply");
+          const error = document.getElementById("s-error");
+          const note = document.getElementById("s-note");
+          apply.disabled = true;
+          error.textContent = "";
+          let result;
+          try {
+            const response = await fetch(`/api/servers/${server.namespace}/${server.name}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            });
+            if (!response.ok) {
+              error.textContent = (await response.text()) || "Changing the server failed.";
+              apply.disabled = false;
+              return;
+            }
+            result = await response.json();
+          } catch {
+            error.textContent = "Changing the server failed.";
+            apply.disabled = false;
+            return;
+          }
+          manage.settings = data;
+          if (result.applied === "restart") {
+            note.textContent = "Switching games. This page rejoins once the server's back.";
+            return;
+          }
+          note.textContent =
+            result.applied === "live"
+              ? `Changing to ${data.map}…`
+              : "Saved. The server picks up the change within a minute or two.";
+          setTimeout(() => {
+            closeSettings();
+            document.getElementById("pause-hint").textContent =
+              result.applied === "live" ? "The server is changing map." : "The change applies soon.";
+          }, 1200);
+        });
+      }
+
+      // Rejoins after the server changes in a way the running game can't follow: a different
+      // game, or a map whose files the page didn't download. The files are cached, so this is
+      // quick, and the form submits itself.
+      // waitFor is the game the server is switching to, which the page waits for before joining.
+      function rejoin(waitFor = null) {
+        try {
+          sessionStorage.setItem("rejoin", JSON.stringify({ password: passwordInput.value, waitFor }));
+        } catch {}
+        location.reload();
+      }
+
+      function notice(text) {
+        const el = document.getElementById("notice");
+        el.textContent = text;
+        el.hidden = !text;
+      }
+
+      // Checks on the server while playing. available is the maps whose files the game has, or
+      // null when it reads files as it needs them.
+      function watchServer(available) {
+        let game;
+        setInterval(async () => {
+          let status;
+          try {
+            const response = await fetch(`/api/servers/${server.namespace}/${server.name}/status`);
+            if (response.status === 404) return notice("This server was deleted.");
+            if (!response.ok) return;
+            status = await response.json();
+          } catch {
+            return;
+          }
+          game ??= status.game;
+          // The old server is about to stop, which would leave the game at its menu, so the
+          // page waits for the new one in place of the game.
+          if (status.game !== game) {
+            notice(`The server is switching to ${status.game}…`);
+            return rejoin(status.game);
+          }
+          if (!status.ready) return;
+          const map = status.map?.toLowerCase();
+          if (available && map && !available.has(map)) {
+            notice(`The server changed to ${status.map}. Rejoining…`);
+            return rejoin();
+          }
+          notice("");
+        }, 5000);
+      }
+
       passwordInput.hidden = !server.needsPassword;
       document.getElementById("eula-row").hidden = stored("demoEulaAccepted") === "yes";
 
@@ -413,7 +841,48 @@
           download.append(warning);
         }
       }
-      describeDownload().catch(() => {});
+      // After the server changed under a running game, join again without asking, once it's
+      // ready, and running the game it switched to.
+      let rejoining = null;
+      try {
+        rejoining = JSON.parse(sessionStorage.getItem("rejoin"));
+        sessionStorage.removeItem("rejoin");
+      } catch {}
+      if (rejoining && stored("demoEulaAccepted") === "yes") {
+        passwordInput.value = rejoining.password || "";
+        waitForServer(rejoining.waitFor).then((ready) => {
+          document.getElementById("join").classList.remove("waiting");
+          if (ready) {
+            form.requestSubmit();
+          } else {
+            setStatus("The server didn't come back. Try joining again.");
+            describeDownload().catch(() => {});
+          }
+        });
+      } else {
+        describeDownload().catch(() => {});
+      }
+
+      // Waits until the server is ready running game, or any game when it's null, for up to
+      // five minutes.
+      async function waitForServer(game) {
+        const join = document.getElementById("join");
+        join.classList.add("waiting");
+        setStatus(game ? `Switching to ${game}…` : "Rejoining…");
+        const deadline = Date.now() + 5 * 60 * 1000;
+        while (Date.now() < deadline) {
+          try {
+            const response = await fetch(`/api/servers/${server.namespace}/${server.name}/status`);
+            if (response.status === 404) return false;
+            if (response.ok) {
+              const status = await response.json();
+              if (status.ready && (!game || status.game === game)) return true;
+            }
+          } catch {}
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+        return false;
+      }
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -506,6 +975,14 @@
           document.getElementById("join").remove();
           let started;
           const engineStarted = new Promise((resolve) => (started = resolve));
+          // The maps whose files the game has, when it doesn't read files as it needs them.
+          const available = onDemand ? null : new Set();
+          const addMaps = (assets) => {
+            for (const asset of assets) for (const name of asset.maps ?? []) available?.add(name.toLowerCase());
+          };
+          addMaps(now);
+          available?.add(map);
+          watchServer(available);
           const module = await ioquake3({
             canvas: document.getElementById("canvas"),
             arguments: args,
@@ -547,6 +1024,7 @@
           for (const asset of later) {
             try {
               writeFile(module, `/${asset.name}`, await loadAsset(asset, () => {}));
+              addMaps([asset]);
             } catch (error) {
               console.warn(`Downloading ${asset.name} failed:`, error);
             }

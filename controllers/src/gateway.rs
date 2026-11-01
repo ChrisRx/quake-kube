@@ -4,8 +4,11 @@
 
 use crate::auth::{Auth, AuthError, User};
 use crate::config::{ExposureType, GatewayConfig};
+use crate::config::{Preset, PresetGameType};
+use crate::levelshots::Levelshots;
 use crate::prelude::*;
-use crate::quake_server::MapSpec;
+use crate::protocol;
+use crate::quake_server::{MapSpec, QuakeServerSpec};
 use crate::quake_server::{GAME_PORT, HTTP_PORT};
 use crate::registry::{self, Registry};
 use crate::webtransport::WebTransport;
@@ -17,6 +20,7 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use futures::SinkExt;
+use k8s_openapi::jiff::Timestamp;
 use kube::api::PostParams;
 use kube::runtime::reflector::{self, ObjectRef, Store};
 use kube::runtime::WatchStreamExt;
@@ -24,7 +28,7 @@ use serde_json::json;
 use tokio::net::{TcpListener, UdpSocket};
 use tracing::*;
 
-/// Label on servers created from the web app. Only these can be deleted from it.
+/// Label on servers created from the web app. Only these can be changed or deleted from it.
 const CREATED_BY_LABEL: &str = "quake.kube/created-by";
 
 /// Label with the preset a server was created from.
@@ -33,6 +37,16 @@ const PRESET_LABEL: &str = "quake.kube/preset";
 /// Annotation with the email address of whoever created a server from the web app, when the
 /// gateway knows who people are.
 const OWNER_ANNOTATION: &str = "quake.kube/owner";
+
+/// Annotation with the name of the preset's game type a server was created with.
+const GAME_TYPE_ANNOTATION: &str = "quake.kube/game-type";
+
+/// Annotation with when a server created from the web app was last left without players, so
+/// every gateway replica counts down to deleting it from the same time.
+const IDLE_SINCE_ANNOTATION: &str = "quake.kube/idle-since";
+
+/// How often servers created from the web app are checked for players.
+const IDLE_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
 const INDEX_HTML: &str = include_str!("../static/index.html");
 const PLAY_HTML: &str = include_str!("../static/play.html");
@@ -83,6 +97,11 @@ struct Gateway {
     auth: Arc<Auth>,
     /// Whether game servers have external addresses native clients can connect to.
     native_clients: bool,
+    /// The master server's address, which game servers' configs name, so the gateway renders
+    /// the same configs as the controller.
+    master: Option<String>,
+    /// Thumbnails of every preset's maps.
+    levelshots: Arc<Levelshots>,
 }
 
 impl Gateway {
@@ -117,16 +136,74 @@ impl FromRequestParts<Arc<Gateway>> for Identity {
     }
 }
 
-/// Whether a server can be deleted from the web app by the user: one created there, by them
-/// unless they're an admin.
-fn deletable(server: &QuakeServer, user: Option<&User>, admin: bool) -> bool {
-    if server.labels().get(CREATED_BY_LABEL).map(String::as_str) != Some("gateway") {
+/// Whether the user can change or delete a server from the web app: one created there, by
+/// them unless they're an admin.
+fn manageable(server: &QuakeServer, user: Option<&User>, admin: bool) -> bool {
+    if !created_here(server) {
         return false;
     }
     match user {
         None => true,
         Some(user) => admin || owner(server) == Some(user.email.as_str()),
     }
+}
+
+fn created_here(server: &QuakeServer) -> bool {
+    server.labels().get(CREATED_BY_LABEL).map(String::as_str) == Some("gateway")
+}
+
+/// Checks the user can change or delete a server, only asking the API server whether they're
+/// an admin when it matters.
+async fn authorize(
+    gateway: &Gateway,
+    server: &QuakeServer,
+    user: Option<&User>,
+    namespace: &str,
+) -> Result<(), (StatusCode, String)> {
+    if manageable(server, user, false) {
+        return Ok(());
+    }
+    let admin = match user {
+        Some(user) => gateway.auth.is_admin(user, namespace).await,
+        None => false,
+    };
+    if manageable(server, user, admin) {
+        return Ok(());
+    }
+    Err((
+        StatusCode::FORBIDDEN,
+        "only servers created here can be changed, by whoever created them or an admin".to_owned(),
+    ))
+}
+
+/// How many people, not bots, are playing on a server, as of its latest info.
+fn humans(gateway: &Gateway, server: &QuakeServer) -> i32 {
+    gateway
+        .registry
+        .get(&ObjectRef::from_obj(server))
+        .and_then(|entry| entry.info.get("g_humanplayers")?.parse().ok())
+        .unwrap_or(0)
+}
+
+/// The game a server runs, as shown in the web app: the preset it was created from, or its mod.
+fn game_title(gateway: &Gateway, server: &QuakeServer) -> Option<String> {
+    let preset = (server.labels().get(PRESET_LABEL))
+        .and_then(|name| gateway.config.presets.iter().find(|p| &p.name == name));
+    preset.map(|preset| preset.title.clone()).or_else(|| {
+        server
+            .spec
+            .game
+            .as_ref()
+            .and_then(|game| game.fs_game.clone())
+    })
+}
+
+fn idle_since(server: &QuakeServer) -> Option<Timestamp> {
+    server
+        .annotations()
+        .get(IDLE_SINCE_ANNOTATION)?
+        .parse()
+        .ok()
 }
 
 fn owner(server: &QuakeServer) -> Option<&str> {
@@ -181,6 +258,15 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
     };
 
     let port = config.gateway.port;
+    let levelshots = Levelshots::new(
+        client.clone(),
+        config.gateway.namespace.clone(),
+        config.game_servers.image.clone(),
+    );
+    // Only needed for creating and changing servers, which the gateway can't when it's off.
+    if config.gateway.max_servers > 0 {
+        tokio::spawn(levelshots.clone().run(config.gateway.presets.clone()));
+    }
     let native_clients = config.game_servers.exposure.type_ != ExposureType::None;
     let gateway = Arc::new(Gateway {
         client,
@@ -192,7 +278,10 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
         web_client,
         auth,
         native_clients,
+        master: config.master.address,
+        levelshots,
     });
+    tokio::spawn(delete_idle_servers(gateway.clone()));
 
     let app = Router::new()
         .route("/", get(|| async { Html(INDEX_HTML) }))
@@ -220,7 +309,12 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
         .route("/api/servers", get(list_servers).post(create_server))
         .route(
             "/api/servers/{namespace}/{name}",
-            axum::routing::delete(delete_server),
+            axum::routing::patch(update_server).delete(delete_server),
+        )
+        .route("/api/servers/{namespace}/{name}/status", get(server_status))
+        .route(
+            "/api/presets/{preset}/levelshots/{file}",
+            get(preset_levelshot),
         )
         .route("/play/{namespace}/{name}", get(play))
         .route("/play/{namespace}/{name}/", get(play))
@@ -250,6 +344,58 @@ pub async fn cleanup(client: Client, config: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Deletes servers created from the web app once nobody has played on them for the idle
+/// timeout. A server that never starts, e.g. because its content fails to download, has no
+/// players either, so it's cleaned up too.
+async fn delete_idle_servers(gateway: Arc<Gateway>) {
+    let Some(idle_timeout) = gateway.config.idle_timeout else {
+        return;
+    };
+    let api = Api::<QuakeServer>::namespaced(gateway.client.clone(), &gateway.config.namespace);
+    loop {
+        // Waiting first gives the registry time to hear from the servers after a restart.
+        tokio::time::sleep(IDLE_CHECK_INTERVAL).await;
+        let now = Timestamp::now();
+        for server in gateway.store.state() {
+            if !created_here(&server)
+                || server.namespace().as_deref() != Some(gateway.config.namespace.as_str())
+            {
+                continue;
+            }
+            let name = server.name_any();
+            let since = idle_since(&server);
+            // The annotation's new value, null to remove it.
+            let annotation = if humans(&gateway, &server) > 0 {
+                since.is_some().then_some(serde_json::Value::Null)
+            } else {
+                match since {
+                    None => Some(now.to_string().into()),
+                    Some(since)
+                        if now.as_second() - since.as_second() >= idle_timeout.as_secs() as i64 =>
+                    {
+                        info!(server = %name, owner = owner(&server), "deleting idle server");
+                        if let Err(error) = api.delete(&name, &DeleteParams::default()).await {
+                            warn!(server = %name, "deleting idle server failed: {error}");
+                        }
+                        None
+                    }
+                    Some(_) => None,
+                }
+            };
+            if let Some(value) = annotation {
+                let patch =
+                    json!({ "metadata": { "annotations": { IDLE_SINCE_ANNOTATION: value } } });
+                if let Err(error) = api
+                    .patch(&name, &PatchParams::default(), &Patch::Merge(patch))
+                    .await
+                {
+                    warn!(server = %name, "updating idle time failed: {error}");
+                }
+            }
+        }
+    }
+}
+
 /// Resolves on Ctrl-C, or on SIGTERM, which Kubernetes sends to stop the pod.
 async fn shutdown_signal() {
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
@@ -269,6 +415,11 @@ struct AppConfig<'a> {
     can_create: bool,
     /// Whether native clients can connect to servers' addresses.
     native_clients: bool,
+    /// How many servers can be created from the web app at once, and by each person.
+    max_servers: usize,
+    max_servers_per_user: Option<usize>,
+    /// Seconds without players before a server created from the web app is deleted.
+    idle_timeout: Option<u64>,
     presets: Vec<PresetView<'a>>,
 }
 
@@ -284,23 +435,32 @@ struct PresetView<'a> {
 
 async fn app_config(State(gateway): State<Arc<Gateway>>, Identity(user): Identity) -> Response {
     let config = &gateway.config;
+    let user_known = user.is_some();
     Json(AppConfig {
         user: user.map(|user| user.email),
         native_clients: gateway.native_clients,
         can_create: config.max_servers > 0 && !config.presets.is_empty(),
-        presets: config
-            .presets
-            .iter()
-            .map(|preset| PresetView {
-                name: &preset.name,
-                title: &preset.title,
-                game_types: preset.game_types.iter().map(|t| t.name.as_str()).collect(),
-                maps: &preset.maps,
-                bots: preset.bots,
-            })
-            .collect(),
+        max_servers: config.max_servers,
+        // Only applies when the gateway knows who people are.
+        max_servers_per_user: user_known.then_some(config.max_servers_per_user).flatten(),
+        idle_timeout: config.idle_timeout.map(|timeout| timeout.as_secs()),
+        presets: preset_views(config),
     })
     .into_response()
+}
+
+fn preset_views(config: &GatewayConfig) -> Vec<PresetView<'_>> {
+    config
+        .presets
+        .iter()
+        .map(|preset| PresetView {
+            name: &preset.name,
+            title: &preset.title,
+            game_types: preset.game_types.iter().map(|t| t.name.as_str()).collect(),
+            maps: &preset.maps,
+            bots: preset.bots,
+        })
+        .collect()
 }
 
 /// A server as shown in the web app.
@@ -322,10 +482,20 @@ struct ServerView {
     bots: Option<i32>,
     max_players: Option<i32>,
     needs_password: bool,
+    /// Why it isn't running, when something's wrong rather than it still starting.
+    message: Option<String>,
     /// Who created it from the web app, when the gateway knows who people are.
     owner: Option<String>,
-    /// Whether the user can delete it from the web app.
-    deletable: bool,
+    /// Whether it was created from the web app, which counts towards its limits.
+    created_here: bool,
+    /// Whether the signed-in user created it.
+    mine: bool,
+    /// Whether the user can change or delete it from the web app.
+    manageable: bool,
+    /// Its settings, for changing them, when the user can.
+    settings: Option<ServerSettings>,
+    /// When it'll be deleted for having no players, in milliseconds since the epoch.
+    deletes_at: Option<i64>,
 }
 
 async fn list_servers(
@@ -337,30 +507,31 @@ async fn list_servers(
         Some(user) => gateway.auth.is_admin(user, &gateway.config.namespace).await,
         None => false,
     };
+    let now = Timestamp::now();
     let mut servers: Vec<ServerView> = gateway
         .store
         .state()
         .iter()
         .map(|qs| {
+            let in_namespace = qs.namespace().as_deref() == Some(gateway.config.namespace.as_str());
+            let manageable = manageable(qs, user.as_ref(), admin && in_namespace);
+            let deletes_at = gateway
+                .config
+                .idle_timeout
+                .filter(|_| created_here(qs) && in_namespace && humans(&gateway, qs) == 0);
+            let deletes_at = deletes_at.map(|timeout| {
+                idle_since(qs).unwrap_or(now).as_millisecond() + timeout.as_millis() as i64
+            });
             let entry = gateway.registry.get(&ObjectRef::from_obj(qs.as_ref()));
             let info = entry.as_ref().map(|e| &e.info);
             let get = |key: &str| info.and_then(|info| info.get(key)).cloned();
             let number = |key: &str| get(key).and_then(|v| v.parse::<i32>().ok());
             let humans = number("g_humanplayers");
             let status = qs.status.clone().unwrap_or_default();
-            let preset = qs.labels().get(PRESET_LABEL).and_then(|name| {
-                gateway
-                    .config
-                    .presets
-                    .iter()
-                    .find(|preset| &preset.name == name)
-            });
             ServerView {
                 namespace: qs.namespace().unwrap_or_default(),
                 name: qs.name_any(),
-                game: preset
-                    .map(|preset| preset.title.clone())
-                    .or_else(|| qs.spec.game.as_ref().and_then(|game| game.fs_game.clone())),
+                game: game_title(&gateway, qs),
                 ready: status.ready,
                 address: status.address,
                 // Until the server answers, its spec has the name it was created with.
@@ -379,12 +550,15 @@ async fn list_servers(
                     .map(|(all, humans)| all - humans),
                 max_players: number("sv_maxclients"),
                 needs_password: needs_password(qs, get("g_needpass").as_deref()),
+                message: status.message.filter(|_| !status.ready),
                 owner: owner(qs).map(String::from),
-                deletable: deletable(
-                    qs,
-                    user.as_ref(),
-                    admin && qs.namespace().as_deref() == Some(gateway.config.namespace.as_str()),
-                ),
+                created_here: created_here(qs),
+                mine: user
+                    .as_ref()
+                    .is_some_and(|user| owner(qs) == Some(user.email.as_str())),
+                manageable,
+                settings: manageable.then(|| ServerSettings::of(qs)),
+                deletes_at,
             }
         })
         .collect();
@@ -435,51 +609,135 @@ fn game_type_name(game: Option<&str>, game_type: i32) -> Option<&'static str> {
     })
 }
 
-#[derive(Deserialize)]
+/// A server's settings in the web app, which it creates and changes servers with.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-struct CreateServer {
+struct ServerSettings {
     name: String,
+    /// The game, which can't be changed once the server's created.
+    #[serde(default)]
     preset: String,
     game_type: String,
     map: String,
     #[serde(default)]
     bots: i32,
+    #[serde(default)]
     password: Option<String>,
+    /// Limits for the map, or the game's defaults when unset.
+    #[serde(default)]
+    frag_limit: Option<i32>,
+    /// In minutes.
+    #[serde(default)]
+    time_limit: Option<i32>,
+    #[serde(default)]
+    capture_limit: Option<i32>,
+    #[serde(default)]
+    max_players: Option<i32>,
+}
+
+impl ServerSettings {
+    /// The settings a server was created with, or last changed to.
+    fn of(server: &QuakeServer) -> Self {
+        let spec = &server.spec;
+        let map = spec.maps.first();
+        ServerSettings {
+            name: (spec.server.as_ref())
+                .and_then(|server| server.hostname.clone())
+                .unwrap_or_else(|| server.name_any()),
+            preset: (server.labels().get(PRESET_LABEL).cloned()).unwrap_or_default(),
+            game_type: (server.annotations().get(GAME_TYPE_ANNOTATION).cloned())
+                .unwrap_or_default(),
+            map: map.map(|map| map.name.clone()).unwrap_or_default(),
+            bots: (spec.bot.as_ref())
+                .and_then(|bot| bot.min_players)
+                .unwrap_or(0),
+            password: spec.game.as_ref().and_then(|game| game.password.clone()),
+            frag_limit: map.and_then(|map| map.frag_limit),
+            time_limit: (map.and_then(|map| map.time_limit.as_deref()))
+                .and_then(|limit| limit.strip_suffix('m')?.parse().ok()),
+            capture_limit: map.and_then(|map| map.capture_limit),
+            max_players: spec.server.as_ref().and_then(|server| server.max_clients),
+        }
+    }
+
+    /// Checks the settings against the preset, returning the game type and the server's display
+    /// name.
+    fn validate<'a>(
+        &self,
+        preset: &'a Preset,
+    ) -> Result<(&'a PresetGameType, String), (StatusCode, String)> {
+        let bad_request = |msg: String| Err((StatusCode::BAD_REQUEST, msg));
+        let hostname = display_name(&self.name);
+        if hostname.is_empty() || hostname.chars().count() > MAX_DISPLAY_NAME {
+            return bad_request(format!("names are 1 to {MAX_DISPLAY_NAME} characters"));
+        }
+        let Some(game_type) = preset.game_types.iter().find(|t| t.name == self.game_type) else {
+            return bad_request("unknown game type".to_owned());
+        };
+        if !preset.maps.contains(&self.map) {
+            return bad_request("unknown map".to_owned());
+        }
+        let limits = [
+            ("bots", Some(self.bots), 0, 16),
+            ("the frag limit", self.frag_limit, 0, 999),
+            ("the time limit", self.time_limit, 0, 999),
+            ("the capture limit", self.capture_limit, 0, 999),
+            ("max players", self.max_players, 0, 64),
+        ];
+        for (what, value, min, max) in limits {
+            if value.is_some_and(|value| !(min..=max).contains(&value)) {
+                return bad_request(format!("{what} must be between {min} and {max}"));
+            }
+        }
+        Ok((game_type, hostname))
+    }
+
+    /// The server's spec: the preset's, with these settings.
+    fn spec(&self, preset: &Preset, game_type: &PresetGameType, hostname: &str) -> QuakeServerSpec {
+        let mut spec = preset.spec.clone();
+        if preset.bots {
+            spec.bot.get_or_insert_default().min_players = Some(self.bots);
+        }
+        let game = spec.game.get_or_insert_default();
+        if game_type.type_.is_some() {
+            game.type_ = game_type.type_;
+        }
+        game.password = self.password.clone().filter(|p| !p.is_empty());
+        spec.cvars.extend(game_type.cvars.clone());
+        let server = spec.server.get_or_insert_default();
+        server.hostname = Some(hostname.to_owned());
+        // 0 means the game's default, like an unset limit.
+        let set = |value: Option<i32>| value.filter(|&value| value > 0);
+        if let Some(max_players) = set(self.max_players) {
+            server.max_clients = Some(max_players);
+        }
+        spec.maps = vec![MapSpec {
+            name: self.map.clone(),
+            type_: None,
+            capture_limit: set(self.capture_limit),
+            frag_limit: set(self.frag_limit),
+            time_limit: set(self.time_limit).map(|minutes| format!("{minutes}m")),
+        }];
+        spec
+    }
 }
 
 async fn create_server(
     State(gateway): State<Arc<Gateway>>,
     Identity(user): Identity,
-    Json(request): Json<CreateServer>,
+    Json(request): Json<ServerSettings>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let config = &gateway.config;
-    let bad_request = |msg: &str| Err((StatusCode::BAD_REQUEST, msg.to_owned()));
     if config.max_servers == 0 {
         return Err((
             StatusCode::FORBIDDEN,
             "creating servers is turned off".to_owned(),
         ));
     }
-    let hostname = display_name(&request.name);
-    if hostname.is_empty() || hostname.chars().count() > MAX_DISPLAY_NAME {
-        return bad_request(&format!("names are 1 to {MAX_DISPLAY_NAME} characters"));
-    }
     let Some(preset) = config.presets.iter().find(|p| p.name == request.preset) else {
-        return bad_request("unknown game");
+        return Err((StatusCode::BAD_REQUEST, "unknown game".to_owned()));
     };
-    let Some(game_type) = preset
-        .game_types
-        .iter()
-        .find(|t| t.name == request.game_type)
-    else {
-        return bad_request("unknown game type");
-    };
-    if !preset.maps.contains(&request.map) {
-        return bad_request("unknown map");
-    }
-    if !(0..=16).contains(&request.bots) {
-        return bad_request("bots must be between 0 and 16");
-    }
+    let (game_type, hostname) = request.validate(preset)?;
     let created: Vec<_> = gateway
         .store
         .state()
@@ -511,24 +769,7 @@ async fn create_server(
         ));
     }
 
-    let mut spec = preset.spec.clone();
-    if preset.bots {
-        spec.bot.get_or_insert_default().min_players = Some(request.bots);
-    }
-    let game = spec.game.get_or_insert_default();
-    if game_type.type_.is_some() {
-        game.type_ = game_type.type_;
-    }
-    game.password = request.password.filter(|p| !p.is_empty());
-    spec.cvars.extend(game_type.cvars.clone());
-    spec.server.get_or_insert_default().hostname = Some(hostname.clone());
-    spec.maps = vec![MapSpec {
-        name: request.map,
-        type_: None,
-        capture_limit: None,
-        frag_limit: None,
-        time_limit: None,
-    }];
+    let spec = request.spec(preset, game_type, &hostname);
     // Servers can share a display name, so the first free name, with a number if needed, is
     // used for the resources.
     let api = Api::<QuakeServer>::namespaced(gateway.client.clone(), &config.namespace);
@@ -539,10 +780,10 @@ async fn create_server(
         let labels = server.labels_mut();
         labels.insert(CREATED_BY_LABEL.to_owned(), "gateway".to_owned());
         labels.insert(PRESET_LABEL.to_owned(), preset.name.clone());
+        let annotations = server.annotations_mut();
+        annotations.insert(GAME_TYPE_ANNOTATION.to_owned(), game_type.name.clone());
         if let Some(user) = &user {
-            server
-                .annotations_mut()
-                .insert(OWNER_ANNOTATION.to_owned(), user.email.clone());
+            annotations.insert(OWNER_ANNOTATION.to_owned(), user.email.clone());
         }
         match api.create(&PostParams::default(), &server).await {
             Ok(_) => {
@@ -628,20 +869,7 @@ async fn delete_server(
     let server = gateway
         .server(&namespace, &name)
         .map_err(|status| (status, "no such server".to_owned()))?;
-    if !deletable(&server, user.as_ref(), false) {
-        // Only ask the API server about admins when it matters.
-        let admin = match &user {
-            Some(user) => gateway.auth.is_admin(user, &namespace).await,
-            None => false,
-        };
-        if !deletable(&server, user.as_ref(), admin) {
-            return Err((
-                StatusCode::FORBIDDEN,
-                "only servers created here can be deleted, by whoever created them or an admin"
-                    .to_owned(),
-            ));
-        }
-    }
+    authorize(&gateway, &server, user.as_ref(), &namespace).await?;
     Api::<QuakeServer>::namespaced(gateway.client.clone(), &namespace)
         .delete(&name, &DeleteParams::default())
         .await
@@ -660,6 +888,303 @@ async fn delete_server(
         "deleted server"
     );
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// How a change to a server's settings took effect.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum Applied {
+    /// Right away, from the server's console, which reloads the map.
+    Live,
+    /// When the server reloads its config, within a minute or two, since sending it right away
+    /// failed.
+    Later,
+    /// By replacing the server, for a different game or its content.
+    Restart,
+}
+
+#[derive(Serialize)]
+struct UpdateResult {
+    applied: Applied,
+}
+
+/// Changes a server's settings, including which game it runs. Changes the game can make while
+/// running are sent to the server right away, besides being saved in its spec.
+async fn update_server(
+    State(gateway): State<Arc<Gateway>>,
+    Identity(user): Identity,
+    Path((namespace, name)): Path<(String, String)>,
+    Json(request): Json<ServerSettings>,
+) -> Result<Json<UpdateResult>, (StatusCode, String)> {
+    let server = gateway
+        .server(&namespace, &name)
+        .map_err(|status| (status, "no such server".to_owned()))?;
+    authorize(&gateway, &server, user.as_ref(), &namespace).await?;
+    // The game stays the same unless the request names another.
+    let preset_name = match request.preset.as_str() {
+        "" => server
+            .labels()
+            .get(PRESET_LABEL)
+            .cloned()
+            .unwrap_or_default(),
+        name => name.to_owned(),
+    };
+    let preset = (gateway.config.presets.iter())
+        .find(|p| p.name == preset_name)
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "this game isn't offered anymore".to_owned(),
+            )
+        })?;
+    let (game_type, hostname) = request.validate(preset)?;
+
+    // Replaced rather than patched, so the old game type's cvars go, and with the version
+    // from the cache, so a change made meanwhile isn't overwritten.
+    let mut updated = (*server).clone();
+    updated.spec = request.spec(preset, game_type, &hostname);
+    updated.metadata.managed_fields = None;
+    updated
+        .annotations_mut()
+        .insert(GAME_TYPE_ANNOTATION.to_owned(), game_type.name.clone());
+    updated
+        .labels_mut()
+        .insert(PRESET_LABEL.to_owned(), preset.name.clone());
+    Api::<QuakeServer>::namespaced(gateway.client.clone(), &namespace)
+        .replace(&name, &PostParams::default(), &updated)
+        .await
+        .map_err(|error| match error {
+            kube::Error::Api(status) if status.code == 409 => (
+                StatusCode::CONFLICT,
+                "the server changed meanwhile, try again".to_owned(),
+            ),
+            error => {
+                warn!("updating server failed: {error}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "updating the server failed".to_owned(),
+                )
+            }
+        })?;
+    info!(
+        %namespace,
+        server = %name,
+        user = user.as_ref().map(|user| user.email.as_str()),
+        "updated server"
+    );
+    let applied = if needs_restart(&server.spec, &updated.spec) {
+        Applied::Restart
+    } else {
+        match apply_live(&gateway, &updated).await {
+            Ok(()) => Applied::Live,
+            Err(error) => {
+                warn!(%namespace, server = %name, "applying settings right away failed: {error}");
+                Applied::Later
+            }
+        }
+    };
+    Ok(Json(UpdateResult { applied }))
+}
+
+/// Whether a server has to be replaced for a change to its spec: a different mod, its content,
+/// or running native code, which its pod is set up for.
+fn needs_restart(old: &QuakeServerSpec, new: &QuakeServerSpec) -> bool {
+    let fixed = |spec: &QuakeServerSpec| {
+        let game = spec.game.as_ref();
+        serde_json::to_value((
+            game.and_then(|game| game.fs_game.as_ref()),
+            game.and_then(|game| game.native),
+            &spec.content,
+        ))
+        .unwrap_or_default()
+    };
+    fixed(old) != fixed(new)
+}
+
+/// Sends a server the config the controller will render for its new spec, so the change takes
+/// effect without waiting for the config to reach the pod. The server checks it's from the
+/// gateway by its rcon password, and ignores the config when it arrives later.
+async fn apply_live(gateway: &Gateway, server: &QuakeServer) -> anyhow::Result<()> {
+    let namespace = server.namespace().unwrap_or_default();
+    let name = server.name_any();
+    let secret = Api::<Secret>::namespaced(gateway.client.clone(), &namespace)
+        .get(&name)
+        .await?;
+    let password = (secret.data.as_ref())
+        .and_then(|data| data.get("rconPassword"))
+        .map(|password| String::from_utf8_lossy(&password.0).into_owned())
+        .ok_or_else(|| anyhow::anyhow!("the server's secret has no rcon password"))?;
+    let config = server.render_config(gateway.master.as_deref(), &password)?;
+    let response = gateway
+        .http
+        .post(format!("http://{name}.{namespace}.svc:{HTTP_PORT}/config"))
+        .bearer_auth(password)
+        .body(config)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        anyhow::bail!(
+            "the server answered {}: {}",
+            response.status(),
+            response.text().await.unwrap_or_default().trim()
+        );
+    }
+    Ok(())
+}
+
+/// A player on a server, as shown in the web app.
+#[derive(Serialize)]
+struct PlayerView {
+    name: String,
+    score: i32,
+    ping: i32,
+    bot: bool,
+}
+
+/// A running server's match, as shown in the web app.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct StatusView {
+    ready: bool,
+    /// The game it runs, so the play page notices when it changes.
+    game: Option<String>,
+    map: Option<String>,
+    /// Best first.
+    players: Vec<PlayerView>,
+    frag_limit: Option<i32>,
+    /// In minutes.
+    time_limit: Option<i32>,
+    capture_limit: Option<i32>,
+}
+
+/// Who's playing on a server, and to what limits.
+async fn server_status(
+    State(gateway): State<Arc<Gateway>>,
+    Identity(_): Identity,
+    Path((namespace, name)): Path<(String, String)>,
+) -> Result<Json<StatusView>, StatusCode> {
+    let server = gateway.server(&namespace, &name)?;
+    let game = game_title(&gateway, &server);
+    // Ready for its current spec: after switching games, the old server keeps running until
+    // the controller has replaced it, and the play page mustn't rejoin that.
+    let current = server.status.as_ref().is_some_and(|status| {
+        status.ready && status.observed_generation == server.metadata.generation
+    });
+    if !current {
+        return Ok(Json(StatusView {
+            game,
+            ..StatusView::default()
+        }));
+    }
+    let query = async {
+        let addr = registry::lookup(&format!("{name}.{namespace}.svc:{GAME_PORT}")).await?;
+        let wait = Duration::from_secs(2);
+        // The info says how many players are bots, which the status doesn't.
+        let (status, info) = tokio::join!(
+            protocol::get_status(addr, wait),
+            protocol::get_info(addr, wait)
+        );
+        anyhow::Ok((status?, info.ok()))
+    };
+    let (status, info) = query.await.map_err(|error| {
+        debug!(%namespace, server = %name, "querying players failed: {error}");
+        StatusCode::BAD_GATEWAY
+    })?;
+    let bots = info.and_then(|info| {
+        let number = |key: &str| info.get(key)?.parse::<usize>().ok();
+        Some(number("clients")?.saturating_sub(number("g_humanplayers")?))
+    });
+    let bot_pings = is_bot_ping(&status.players, bots);
+    let mut players: Vec<PlayerView> = status
+        .players
+        .into_iter()
+        .map(|player| PlayerView {
+            bot: bot_pings && player.ping == 0,
+            name: player.name,
+            score: player.score,
+            ping: player.ping,
+        })
+        .collect();
+    players.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.name.cmp(&b.name)));
+    // 0 means no limit.
+    let limit = |key: &str| {
+        (status.info.get(key))
+            .and_then(|value| value.parse().ok())
+            .filter(|&limit: &i32| limit > 0)
+    };
+    Ok(Json(StatusView {
+        ready: true,
+        game,
+        map: status.info.get("mapname").cloned(),
+        frag_limit: limit("fraglimit"),
+        time_limit: limit("timelimit"),
+        capture_limit: limit("capturelimit"),
+        players,
+    }))
+}
+
+/// Whether a ping of 0 means a bot. ioquake3 reports bots' pings as 0, but a player close
+/// enough to the server, e.g. on the same machine, can have one too. It does unless more
+/// players have it than there are bots, when which are bots can't be told.
+fn is_bot_ping(players: &[protocol::Player], bots: Option<usize>) -> bool {
+    let zero = players.iter().filter(|player| player.ping == 0).count();
+    bots.is_none_or(|bots| zero <= bots)
+}
+
+/// Serves a thumbnail of a map's levelshot for a preset, so menus can show the maps of games
+/// a server doesn't run. Until the preset's thumbnails are made, it comes from a running
+/// server with the preset's content, if there is one.
+async fn preset_levelshot(
+    State(gateway): State<Arc<Gateway>>,
+    Identity(_): Identity,
+    Path((preset, file)): Path<(String, String)>,
+) -> Result<Response, StatusCode> {
+    let path = format!("levelshots/{file}");
+    if !proxied(&Method::GET, &path) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let map = file.trim_end_matches(".jpg");
+    if let Some(data) = gateway.levelshots.get(&preset, map) {
+        return Ok((
+            [
+                (header::CONTENT_TYPE, "image/jpeg"),
+                (header::CACHE_CONTROL, "public, max-age=3600"),
+            ],
+            data,
+        )
+            .into_response());
+    }
+    let server = (gateway.store.state().into_iter())
+        .find(|qs| {
+            qs.labels().get(PRESET_LABEL) == Some(&preset)
+                && qs.status.as_ref().is_some_and(|status| status.ready)
+        })
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let url = format!(
+        "http://{}.{}.svc:{HTTP_PORT}/{path}",
+        server.name_any(),
+        server.namespace().unwrap_or_default()
+    );
+    let upstream = gateway.http.get(&url).send().await.map_err(|error| {
+        debug!(%url, "fetching levelshot failed: {error}");
+        StatusCode::BAD_GATEWAY
+    })?;
+    if !upstream.status().is_success() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let body = upstream
+        .bytes()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/jpeg"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 /// Serves the ioquake3 web client.
@@ -704,6 +1229,16 @@ async fn play(
     Path((namespace, name)): Path<(String, String)>,
 ) -> Result<Html<String>, StatusCode> {
     let server = gateway.server(&namespace, &name)?;
+    // What the server's owner can change from the game's menu.
+    let manage = authorize(&gateway, &server, user.as_ref(), &namespace)
+        .await
+        .is_ok()
+        .then(|| {
+            json!({
+                "settings": ServerSettings::of(&server),
+                "presets": preset_views(&gateway.config),
+            })
+        });
     let client = gateway
         .web_client
         .as_ref()
@@ -760,7 +1295,13 @@ async fn play(
                 .unwrap_or_else(|_| "[]".to_owned())
                 .replace('<', "\\u003c"),
             )
-            // Last, since it comes from the user.
+            // Last, since these come from users.
+            .replace(
+                "{{MANAGE}}",
+                &serde_json::to_string(&manage)
+                    .unwrap_or_else(|_| "null".to_owned())
+                    .replace('<', "\\u003c"),
+            )
             .replace(
                 "{{SUGGESTED_NAME}}",
                 &serde_json::to_string(&user.map(|user| suggested_name(&user.email)))
@@ -779,8 +1320,8 @@ fn suggested_name(email: &str) -> String {
     local.chars().take(32).collect()
 }
 
-/// Whether a path on a game server's pod is one browser clients use: the server's info, and
-/// its content's manifest and pk3 files.
+/// Whether a path on a game server's pod is one browser clients use: the server's info, its
+/// content's manifest and pk3 files, and its maps' levelshots.
 fn proxied(method: &Method, path: &str) -> bool {
     let pak = |name: &str| {
         name.ends_with(".pk3")
@@ -791,6 +1332,14 @@ fn proxied(method: &Method, path: &str) -> bool {
     if *method == Method::POST {
         // Batches of ranges from a pak, for browsers that load files on demand.
         return path.strip_prefix("paks/").is_some_and(pak);
+    }
+    if let Some(map) = path.strip_prefix("levelshots/") {
+        return map.strip_suffix(".jpg").is_some_and(|map| {
+            !map.is_empty()
+                && map
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '+' | '-'))
+        });
     }
     if let Some(index) = path.strip_prefix("paks/") {
         // Which files the engine reads, and where they are in each pak.
@@ -923,6 +1472,8 @@ mod tests {
             "assets/q3ut4/123-zUrT43_004.pk3",
             "paks/q3ut4/zUrT43_004.pk3.json",
             "paks/profile.json",
+            "levelshots/q3dm17.jpg",
+            "levelshots/ut4_abbey.jpg",
         ] {
             assert!(proxied(&get, path), "{path}");
         }
@@ -937,6 +1488,10 @@ mod tests {
             (&post, "paks/profile.json"),
             (&post, "info"),
             (&post, "assets/q3ut4/123-zUrT43_004.pk3"),
+            (&get, "levelshots/q3dm17.tga"),
+            (&get, "levelshots/../q3dm17.jpg"),
+            (&get, "levelshots/.jpg"),
+            (&post, "levelshots/q3dm17.jpg"),
         ] {
             assert!(!proxied(method, path), "{method} {path}");
         }
@@ -967,7 +1522,7 @@ mod tests {
     }
 
     #[test]
-    fn who_can_delete() {
+    fn who_can_manage() {
         let user = |email: &str| User {
             email: email.to_owned(),
             groups: Vec::new(),
@@ -975,21 +1530,142 @@ mod tests {
         let (owner_user, other) = (user("ranger@example.com"), user("sarge@example.com"));
         let mut server = QuakeServer::new("duel", Default::default());
         // Not created from the web app.
-        assert!(!deletable(&server, None, true));
-        assert!(!deletable(&server, Some(&owner_user), true));
+        assert!(!manageable(&server, None, true));
+        assert!(!manageable(&server, Some(&owner_user), true));
         server
             .labels_mut()
             .insert(CREATED_BY_LABEL.to_owned(), "gateway".to_owned());
         // Without auth, anyone can.
-        assert!(deletable(&server, None, false));
+        assert!(manageable(&server, None, false));
         // Without an owner, e.g. created before auth was turned on, only admins can.
-        assert!(!deletable(&server, Some(&owner_user), false));
-        assert!(deletable(&server, Some(&owner_user), true));
+        assert!(!manageable(&server, Some(&owner_user), false));
+        assert!(manageable(&server, Some(&owner_user), true));
         server
             .annotations_mut()
             .insert(OWNER_ANNOTATION.to_owned(), owner_user.email.clone());
-        assert!(deletable(&server, Some(&owner_user), false));
-        assert!(!deletable(&server, Some(&other), false));
-        assert!(deletable(&server, Some(&other), true));
+        assert!(manageable(&server, Some(&owner_user), false));
+        assert!(!manageable(&server, Some(&other), false));
+        assert!(manageable(&server, Some(&other), true));
+    }
+
+    #[test]
+    fn tells_bots_by_ping() {
+        let players = |pings: &[i32]| -> Vec<protocol::Player> {
+            (pings.iter())
+                .map(|&ping| protocol::Player {
+                    name: String::new(),
+                    score: 0,
+                    ping,
+                })
+                .collect()
+        };
+        assert!(is_bot_ping(&players(&[0, 0, 48]), Some(2)));
+        // A player on the same machine as the server, besides two bots.
+        assert!(!is_bot_ping(&players(&[0, 0, 0]), Some(2)));
+        assert!(is_bot_ping(&players(&[0]), None));
+    }
+
+    #[test]
+    fn restarts_for_another_game() {
+        let spec = |value: serde_json::Value| -> QuakeServerSpec {
+            serde_json::from_value(value).unwrap()
+        };
+        let base = spec(json!({ "game": { "fsGame": "cpma" }, "maps": [{ "name": "cpm22" }] }));
+        let map = spec(json!({
+            "game": { "fsGame": "cpma", "type": 1 },
+            "maps": [{ "name": "cpm3a", "fragLimit": 20 }],
+            "cvars": { "mode_start": "1v1" },
+        }));
+        assert!(!needs_restart(&base, &map));
+        assert!(needs_restart(
+            &base,
+            &spec(json!({ "game": { "fsGame": "q3ut4" } }))
+        ));
+        assert!(needs_restart(
+            &base,
+            &spec(
+                json!({ "game": { "fsGame": "cpma" }, "content": [{ "url": "https://example.com/a.zip" }] })
+            ),
+        ));
+    }
+
+    #[test]
+    fn server_settings() {
+        let preset: Preset = serde_json::from_value(json!({
+            "name": "quake3",
+            "title": "Quake 3",
+            "gameTypes": [
+                { "name": "Free For All", "type": "FreeForAll" },
+                { "name": "Instagib", "type": "FreeForAll", "cvars": { "g_instagib": "1" } },
+            ],
+            "maps": ["q3dm17", "q3dm7"],
+            "spec": { "server": { "maxClients": 8 } },
+        }))
+        .unwrap();
+        let settings = ServerSettings {
+            name: " Friday ".to_owned(),
+            preset: "quake3".to_owned(),
+            game_type: "Instagib".to_owned(),
+            map: "q3dm17".to_owned(),
+            bots: 3,
+            password: Some(String::new()),
+            frag_limit: Some(30),
+            time_limit: Some(15),
+            capture_limit: Some(0),
+            max_players: None,
+        };
+        let (game_type, hostname) = settings.validate(&preset).unwrap();
+        assert_eq!(hostname, "Friday");
+        let spec = settings.spec(&preset, game_type, &hostname);
+        assert_eq!(spec.cvars["g_instagib"], "1");
+        assert_eq!(spec.maps[0].time_limit.as_deref(), Some("15m"));
+        assert_eq!(spec.maps[0].capture_limit, None);
+        // The preset's own setting stays unless one is chosen.
+        assert_eq!(spec.server.as_ref().unwrap().max_clients, Some(8));
+        assert_eq!(spec.game.as_ref().unwrap().password, None);
+
+        // The settings read back from the server it makes.
+        let mut server = QuakeServer::new("friday", spec);
+        server
+            .labels_mut()
+            .insert(PRESET_LABEL.to_owned(), "quake3".to_owned());
+        server
+            .annotations_mut()
+            .insert(GAME_TYPE_ANNOTATION.to_owned(), "Instagib".to_owned());
+        assert_eq!(
+            ServerSettings::of(&server),
+            ServerSettings {
+                name: "Friday".to_owned(),
+                password: None,
+                capture_limit: None,
+                max_players: Some(8),
+                ..settings.clone()
+            }
+        );
+
+        for invalid in [
+            ServerSettings {
+                map: "q3dm1".to_owned(),
+                ..settings.clone()
+            },
+            ServerSettings {
+                game_type: "CTF".to_owned(),
+                ..settings.clone()
+            },
+            ServerSettings {
+                frag_limit: Some(-1),
+                ..settings.clone()
+            },
+            ServerSettings {
+                max_players: Some(65),
+                ..settings.clone()
+            },
+            ServerSettings {
+                name: "\"\\".to_owned(),
+                ..settings.clone()
+            },
+        ] {
+            assert!(invalid.validate(&preset).is_err(), "{invalid:?}");
+        }
     }
 }

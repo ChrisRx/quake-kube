@@ -221,6 +221,10 @@ pub struct QuakeServerStatus {
     /// External port allocated from the controller's port range.
     pub port: Option<i32>,
     pub observed_generation: Option<i64>,
+    /// Why the server isn't running, when something's wrong rather than it still starting,
+    /// e.g. its content failed to download.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 impl QuakeServer {
@@ -331,7 +335,7 @@ impl QuakeServer {
 
     /// Renders the config file read by `q3 run`. Unset fields are left out so the server's
     /// defaults apply.
-    fn render_config(&self, master: Option<&str>, rcon_password: &str) -> Result<String> {
+    pub fn render_config(&self, master: Option<&str>, rcon_password: &str) -> Result<String> {
         let mut spec = self.spec.clone();
         // The server plays each map with the map's own type, which otherwise defaults to
         // FreeForAll.
@@ -438,52 +442,23 @@ impl QuakeServer {
         let name = self.name_any();
         let host_port = (ctx.config.game_servers.exposure.type_ == ExposureType::HostPort)
             .then(|| port.unwrap_or(GAME_PORT));
-        // Content images are mounted in both containers, since the content links to them.
-        let images: Vec<(usize, &String)> = (self.spec.content.iter().enumerate())
-            .filter_map(|(i, content)| Some((i, content.image.as_ref()?)))
-            .collect();
-        let mut volume_mounts = vec![
-            VolumeMount {
-                name: "config".to_owned(),
-                mount_path: "/config".to_owned(),
-                read_only: Some(true),
-                ..VolumeMount::default()
-            },
-            VolumeMount {
-                name: "content".to_owned(),
-                mount_path: "/assets".to_owned(),
-                ..VolumeMount::default()
-            },
-        ];
-        volume_mounts.extend(images.iter().map(|(i, _)| VolumeMount {
-            name: format!("content-image-{i}"),
-            mount_path: format!("{CONTENT_IMAGES_DIR}/{i}"),
+        let (content_mounts, content_volumes) = self.content_volumes();
+        let mut volume_mounts = vec![VolumeMount {
+            name: "config".to_owned(),
+            mount_path: "/config".to_owned(),
             read_only: Some(true),
             ..VolumeMount::default()
-        }));
-        let mut volumes = vec![
-            Volume {
-                name: "config".to_owned(),
-                secret: Some(SecretVolumeSource {
-                    secret_name: Some(name.clone()),
-                    ..SecretVolumeSource::default()
-                }),
-                ..Volume::default()
-            },
-            Volume {
-                name: "content".to_owned(),
-                empty_dir: Some(EmptyDirVolumeSource::default()),
-                ..Volume::default()
-            },
-        ];
-        volumes.extend(images.iter().map(|(i, image)| Volume {
-            name: format!("content-image-{i}"),
-            image: Some(ImageVolumeSource {
-                reference: Some((*image).clone()),
-                pull_policy: None,
+        }];
+        volume_mounts.extend(content_mounts);
+        let mut volumes = vec![Volume {
+            name: "config".to_owned(),
+            secret: Some(SecretVolumeSource {
+                secret_name: Some(name.clone()),
+                ..SecretVolumeSource::default()
             }),
             ..Volume::default()
-        }));
+        }];
+        volumes.extend(content_volumes);
         // Downloads the content before the server starts. The Secret it reads changes along
         // with the spec, so the checksum makes a change to what's downloaded replace the pod.
         let fetch = (!self.spec.content.is_empty()).then(|| Container {
@@ -500,6 +475,8 @@ impl QuakeServer {
                 .to_vec(),
             ),
             volume_mounts: Some(volume_mounts.clone()),
+            // The end of the log says why a download failed, for the status.
+            termination_message_policy: Some("FallbackToLogsOnError".to_owned()),
             ..Container::default()
         });
         let fs_game = self
@@ -582,6 +559,7 @@ impl QuakeServer {
                                 ..health_probe()
                             }),
                             volume_mounts: Some(volume_mounts),
+                            termination_message_policy: Some("FallbackToLogsOnError".to_owned()),
                             ..Container::default()
                         }],
                         volumes: Some(volumes),
@@ -598,6 +576,100 @@ impl QuakeServer {
         }
     }
 
+    /// The server's content directory, and its content images, which are mounted wherever the
+    /// content is, since it links to them.
+    fn content_volumes(&self) -> (Vec<VolumeMount>, Vec<Volume>) {
+        let images: Vec<(usize, &String)> = (self.spec.content.iter().enumerate())
+            .filter_map(|(i, content)| Some((i, content.image.as_ref()?)))
+            .collect();
+        let mut mounts = vec![VolumeMount {
+            name: "content".to_owned(),
+            mount_path: "/assets".to_owned(),
+            ..VolumeMount::default()
+        }];
+        mounts.extend(images.iter().map(|(i, _)| VolumeMount {
+            name: format!("content-image-{i}"),
+            mount_path: format!("{CONTENT_IMAGES_DIR}/{i}"),
+            read_only: Some(true),
+            ..VolumeMount::default()
+        }));
+        let mut volumes = vec![Volume {
+            name: "content".to_owned(),
+            empty_dir: Some(EmptyDirVolumeSource::default()),
+            ..Volume::default()
+        }];
+        volumes.extend(images.iter().map(|(i, image)| Volume {
+            name: format!("content-image-{i}"),
+            image: Some(ImageVolumeSource {
+                reference: Some((*image).clone()),
+                pull_policy: None,
+            }),
+            ..Volume::default()
+        }));
+        (mounts, volumes)
+    }
+
+    /// A pod that assembles the server's content like its own pod, and serves thumbnails of the
+    /// maps' levelshots, so the web app can show maps of games no server is running.
+    pub fn levelshots_pod(&self, image: &str, maps: &[String]) -> Result<Pod> {
+        let (volume_mounts, volumes) = self.content_volumes();
+        let config = self.render_config(None, "")?;
+        Ok(Pod {
+            metadata: ObjectMeta {
+                name: Some(self.name_any()),
+                namespace: self.namespace(),
+                labels: Some(BTreeMap::from([
+                    (
+                        "app.kubernetes.io/name".to_owned(),
+                        "quake-levelshots".to_owned(),
+                    ),
+                    (
+                        "app.kubernetes.io/managed-by".to_owned(),
+                        "quake-kube-gateway".to_owned(),
+                    ),
+                ])),
+                ..ObjectMeta::default()
+            },
+            spec: Some(PodSpec {
+                restart_policy: Some("Never".to_owned()),
+                // Gone even if nobody comes for the levelshots.
+                active_deadline_seconds: Some(900),
+                containers: vec![Container {
+                    name: "levelshots".to_owned(),
+                    image: Some(image.to_owned()),
+                    command: Some(vec![
+                        "q3".to_owned(),
+                        "levelshots".to_owned(),
+                        "--assets-dir=/assets".to_owned(),
+                        "--agree-eula".to_owned(),
+                        format!("--maps={}", maps.join(",")),
+                        format!("--config-data={config}"),
+                    ]),
+                    ports: Some(vec![ContainerPort {
+                        name: Some("http".to_owned()),
+                        container_port: HTTP_PORT,
+                        ..ContainerPort::default()
+                    }]),
+                    readiness_probe: Some(Probe {
+                        http_get: Some(HTTPGetAction {
+                            path: Some("/healthz".to_owned()),
+                            port: IntOrString::Int(HTTP_PORT),
+                            ..HTTPGetAction::default()
+                        }),
+                        period_seconds: Some(2),
+                        ..Probe::default()
+                    }),
+                    volume_mounts: Some(volume_mounts),
+                    termination_message_policy: Some("FallbackToLogsOnError".to_owned()),
+                    ..Container::default()
+                }],
+                volumes: Some(volumes),
+                ..PodSpec::default()
+            }),
+            ..Pod::default()
+        })
+    }
+
     /// Builds the status from the current state of the server's objects.
     async fn observe(
         &self,
@@ -610,9 +682,8 @@ impl QuakeServer {
         let running = Api::<Deployment>::namespaced(client.clone(), namespace)
             .get_opt(&name)
             .await?
-            .and_then(|deployment| deployment.status?.ready_replicas)
-            .unwrap_or(0)
-            > 0;
+            .is_some_and(|deployment| rolled_out(&deployment));
+        let pods = self.pods(client, namespace).await?;
 
         let external = || async {
             Api::<Service>::namespaced(client.clone(), namespace)
@@ -629,13 +700,12 @@ impl QuakeServer {
                 let node_port = external()
                     .await?
                     .and_then(|svc| svc.spec?.ports?.first()?.node_port);
-                match (self.node_address(client, namespace).await?, node_port) {
+                match (node_address(client, &pods).await?, node_port) {
                     (Some(host), Some(node_port)) => Some(host_port(&host, node_port)),
                     _ => None,
                 }
             }
-            ExposureType::HostPort => self
-                .node_address(client, namespace)
+            ExposureType::HostPort => node_address(client, &pods)
                 .await?
                 .map(|host| host_port(&host, port.unwrap_or(GAME_PORT))),
             ExposureType::None => None,
@@ -646,35 +716,33 @@ impl QuakeServer {
             address,
             port,
             observed_generation: self.metadata.generation,
+            message: if running {
+                None
+            } else {
+                pods.first().and_then(pod_problem)
+            },
         })
     }
 
-    /// Returns the address of the node running the server, preferring its external IP.
-    async fn node_address(&self, client: &Client, namespace: &str) -> Result<Option<String>> {
+    /// Returns the server's pods that aren't being deleted, newest first.
+    async fn pods(&self, client: &Client, namespace: &str) -> Result<Vec<Pod>> {
         let selector = self
             .selector_labels()
             .iter()
             .map(|(k, v)| format!("{k}={v}"))
             .collect::<Vec<_>>()
             .join(",");
-        let pods = Api::<Pod>::namespaced(client.clone(), namespace)
+        let mut pods: Vec<Pod> = Api::<Pod>::namespaced(client.clone(), namespace)
             .list(&ListParams::default().labels(&selector))
-            .await?;
-        let Some(node_name) = pods.into_iter().find_map(|pod| pod.spec?.node_name) else {
-            return Ok(None);
-        };
-        let addresses = Api::<Node>::all(client.clone())
-            .get(&node_name)
             .await?
-            .status
-            .and_then(|status| status.addresses)
-            .unwrap_or_default();
-        Ok(["ExternalIP", "InternalIP"].iter().find_map(|type_| {
-            addresses
-                .iter()
-                .find(|addr| addr.type_ == *type_)
-                .map(|addr| addr.address.clone())
-        }))
+            .into_iter()
+            .filter(|pod| pod.metadata.deletion_timestamp.is_none())
+            .collect();
+        pods.sort_by(|a, b| {
+            let created = |pod: &Pod| pod.metadata.creation_timestamp.clone();
+            created(b).cmp(&created(a))
+        });
+        Ok(pods)
     }
 
     fn selector_labels(&self) -> BTreeMap<String, String> {
@@ -707,6 +775,109 @@ impl QuakeServer {
     }
 }
 
+/// Whether the Deployment's pod runs its current template, e.g. with a new mod's content,
+/// rather than the old pod still running while it's replaced.
+fn rolled_out(deployment: &Deployment) -> bool {
+    let Some(status) = &deployment.status else {
+        return false;
+    };
+    status.observed_generation >= deployment.metadata.generation
+        && status.updated_replicas.unwrap_or(0) > 0
+        && status.ready_replicas.unwrap_or(0) > 0
+}
+
+/// Returns the address of the node running the server, preferring its external IP.
+async fn node_address(client: &Client, pods: &[Pod]) -> Result<Option<String>> {
+    let Some(node_name) = pods
+        .iter()
+        .find_map(|pod| pod.spec.as_ref()?.node_name.clone())
+    else {
+        return Ok(None);
+    };
+    let addresses = Api::<Node>::all(client.clone())
+        .get(&node_name)
+        .await?
+        .status
+        .and_then(|status| status.addresses)
+        .unwrap_or_default();
+    Ok(["ExternalIP", "InternalIP"].iter().find_map(|type_| {
+        addresses
+            .iter()
+            .find(|addr| addr.type_ == *type_)
+            .map(|addr| addr.address.clone())
+    }))
+}
+
+/// Why a server's pod isn't running, when it's stuck rather than still starting: it can't be
+/// scheduled, its image can't be pulled, or a container keeps failing.
+pub fn pod_problem(pod: &Pod) -> Option<String> {
+    let status = pod.status.as_ref()?;
+    let unschedulable = status.conditions.iter().flatten().find(|c| {
+        c.type_ == "PodScheduled"
+            && c.status == "False"
+            && c.reason.as_deref() == Some("Unschedulable")
+    });
+    if let Some(condition) = unschedulable {
+        return Some(format!(
+            "the server can't be scheduled: {}",
+            condition.message.as_deref().unwrap_or("no node fits it")
+        ));
+    }
+    let containers = (status.init_container_statuses.iter().flatten())
+        .chain(status.container_statuses.iter().flatten());
+    for container in containers {
+        // Downloading content is the init container's job.
+        let what = if container.name == "content" {
+            "downloading the server's content"
+        } else {
+            "the server"
+        };
+        let waiting = container.state.as_ref().and_then(|s| s.waiting.as_ref());
+        let reason = waiting
+            .and_then(|w| w.reason.as_deref())
+            .unwrap_or_default();
+        match reason {
+            "ErrImagePull" | "ImagePullBackOff" | "InvalidImageName" => {
+                return Some(format!(
+                    "pulling {} failed: {}",
+                    container.image,
+                    waiting.and_then(|w| w.message.as_deref()).unwrap_or(reason)
+                ));
+            }
+            "CreateContainerConfigError" | "CreateContainerError" => {
+                return Some(format!(
+                    "starting {what} failed: {}",
+                    waiting.and_then(|w| w.message.as_deref()).unwrap_or(reason)
+                ));
+            }
+            "CrashLoopBackOff" => {
+                let terminated =
+                    (container.last_state.as_ref()).and_then(|s| s.terminated.as_ref());
+                // The end of the container's log, which says why.
+                let log = terminated
+                    .and_then(|t| t.message.as_deref())
+                    .and_then(|m| m.lines().rev().find(|line| !line.trim().is_empty()))
+                    .map(|line| truncate(line.trim(), 300));
+                let code = terminated.map(|t| t.exit_code).unwrap_or_default();
+                return Some(match log {
+                    Some(log) => format!("{what} failed: {log}"),
+                    None => format!("{what} keeps exiting with code {code}"),
+                });
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Shortens s to at most max characters.
+fn truncate(s: &str, max: usize) -> String {
+    match s.char_indices().nth(max) {
+        Some((i, _)) => format!("{}...", &s[..i]),
+        None => s.to_owned(),
+    }
+}
+
 /// Joins a host and port, bracketing IPv6 addresses.
 fn host_port(host: &str, port: i32) -> String {
     if host.contains(':') {
@@ -718,7 +889,7 @@ fn host_port(host: &str, port: i32) -> String {
 
 /// A stable checksum of value (FNV-1a over its JSON), unlike std's hashers, whose output can
 /// change between Rust releases and would replace every pod after an upgrade.
-fn checksum(value: &impl Serialize) -> String {
+pub fn checksum(value: &impl Serialize) -> String {
     let json = serde_json::to_vec(value).unwrap_or_default();
     let hash = json.iter().fold(0xcbf29ce484222325u64, |hash, byte| {
         (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
@@ -789,6 +960,75 @@ mod tests {
         assert!(config["content"][0].get("path").is_none());
         assert_eq!(config["content"][1]["path"], "/content-images/1");
         assert_eq!(config["server"]["password"], "secret");
+    }
+
+    #[test]
+    fn ready_once_rolled_out() {
+        let deployment = |generation: i64, status: serde_json::Value| -> Deployment {
+            serde_json::from_value(
+                json!({ "metadata": { "generation": generation }, "status": status }),
+            )
+            .unwrap()
+        };
+        let ready = json!({ "observedGeneration": 2, "updatedReplicas": 1, "readyReplicas": 1 });
+        assert!(rolled_out(&deployment(2, ready.clone())));
+        // Not yet seen by the Deployment controller.
+        assert!(!rolled_out(&deployment(3, ready)));
+        // The old pod, still ready while it's replaced.
+        assert!(!rolled_out(&deployment(
+            2,
+            json!({ "observedGeneration": 2, "updatedReplicas": 0, "readyReplicas": 1 })
+        )));
+    }
+
+    #[test]
+    fn explains_stuck_pods() {
+        let pod = |status: serde_json::Value| -> Pod {
+            serde_json::from_value(json!({ "status": status })).unwrap()
+        };
+        // Still starting.
+        assert_eq!(pod_problem(&pod(json!({}))), None);
+        assert_eq!(
+            pod_problem(&pod(json!({
+                "containerStatuses": [{
+                    "name": "server", "image": "q3", "imageID": "", "ready": false,
+                    "restartCount": 0, "state": { "waiting": { "reason": "ContainerCreating" } },
+                }],
+            }))),
+            None
+        );
+        assert_eq!(
+            pod_problem(&pod(json!({
+                "conditions": [{
+                    "type": "PodScheduled", "status": "False", "reason": "Unschedulable",
+                    "message": "0/1 nodes are available",
+                }],
+            }))),
+            Some("the server can't be scheduled: 0/1 nodes are available".to_owned())
+        );
+        assert_eq!(
+            pod_problem(&pod(json!({
+                "initContainerStatuses": [{
+                    "name": "content", "image": "q3", "imageID": "", "ready": false,
+                    "restartCount": 3,
+                    "state": { "waiting": { "reason": "CrashLoopBackOff" } },
+                    "lastState": { "terminated": {
+                        "exitCode": 1, "message": "fetching\nchecksum mismatch\n\n",
+                    } },
+                }],
+            }))),
+            Some("downloading the server's content failed: checksum mismatch".to_owned())
+        );
+        assert_eq!(
+            pod_problem(&pod(json!({
+                "containerStatuses": [{
+                    "name": "server", "image": "example.com/q3:1", "imageID": "",
+                    "ready": false, "restartCount": 0,
+                    "state": { "waiting": { "reason": "ImagePullBackOff", "message": "not found" } },
+                }],
+            }))),
+            Some("pulling example.com/q3:1 failed: not found".to_owned())
+        );
     }
 
     #[test]

@@ -16,6 +16,7 @@
         --accent-strong: #c2421c;
         --ok: #7dbb5a;
         --wait: #d9a441;
+        --bad: #e5675c;
         --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       }
       * {
@@ -96,6 +97,45 @@
       .server.ready {
         border-left-color: var(--accent);
       }
+      .server.failed {
+        border-left-color: var(--bad);
+      }
+      .summary {
+        position: relative;
+        display: block;
+        min-width: 0;
+        padding: 0 0 0 22px;
+        font: inherit;
+        letter-spacing: normal;
+        text-align: left;
+        text-transform: none;
+        color: inherit;
+        background: none;
+        border: 0;
+      }
+      .summary:hover {
+        background: none;
+      }
+      .summary:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 4px;
+      }
+      /* In a gutter left of the name, so the details line up under the name. */
+      .chevron {
+        position: absolute;
+        top: 7px;
+        left: 0;
+        width: 11px;
+        height: 11px;
+        color: var(--muted);
+        transition: transform 0.15s;
+      }
+      .summary:hover .chevron {
+        color: var(--text);
+      }
+      .open .chevron {
+        transform: rotate(90deg);
+      }
       .server .title {
         display: flex;
         align-items: center;
@@ -114,6 +154,16 @@
       .ready .dot {
         background: var(--ok);
       }
+      .failed .dot {
+        background: var(--bad);
+      }
+      .problem {
+        display: block;
+        margin-top: 6px;
+        font: 13px var(--mono);
+        color: var(--bad);
+        overflow-wrap: anywhere;
+      }
       .details {
         display: flex;
         flex-wrap: wrap;
@@ -125,6 +175,74 @@
       .details b {
         font-weight: 500;
         color: var(--text);
+      }
+      .panel {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+        gap: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+      }
+      .panel.no-shot {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .panel.no-shot .levelshot {
+        display: none;
+      }
+      .levelshot {
+        width: 100%;
+        aspect-ratio: 4 / 3;
+        object-fit: cover;
+        background: var(--bg);
+        border: 1px solid var(--line);
+      }
+      .limits {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 18px;
+        margin: 0 0 10px;
+        font: 13px var(--mono);
+        color: var(--muted);
+      }
+      .limits:empty {
+        display: none;
+      }
+      .limits b {
+        font-weight: 500;
+        color: var(--text);
+      }
+      .scores {
+        width: 100%;
+        border-collapse: collapse;
+        font: 13px var(--mono);
+      }
+      .scores th {
+        padding: 0 8px 6px;
+        font-weight: 500;
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-align: left;
+        text-transform: uppercase;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+      }
+      .scores td {
+        padding: 5px 8px;
+        border-bottom: 1px solid var(--line);
+        overflow-wrap: anywhere;
+      }
+      .scores .num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .scores .bot {
+        color: var(--muted);
+      }
+      .scores-note {
+        margin: 0;
+        font: 13px var(--mono);
+        color: var(--muted);
       }
       .actions {
         display: flex;
@@ -150,6 +268,17 @@
       .button.disabled {
         pointer-events: none;
         opacity: 0.4;
+      }
+      button:disabled,
+      button:disabled:hover {
+        cursor: default;
+        opacity: 0.5;
+        background: var(--accent-strong);
+      }
+      button.secondary:disabled:hover {
+        color: var(--muted);
+        background: transparent;
+        border-color: var(--line);
       }
       button.secondary {
         color: var(--muted);
@@ -205,6 +334,52 @@
         border: 1px solid var(--line);
         border-radius: 0;
       }
+      select:disabled {
+        opacity: 0.6;
+      }
+      /* Number fields get their own buttons, which are easier to hit than the browser's. */
+      input[type="number"] {
+        appearance: textfield;
+        -moz-appearance: textfield;
+      }
+      input[type="number"]::-webkit-inner-spin-button,
+      input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      .stepper {
+        display: flex;
+      }
+      .stepper input {
+        flex: 1;
+        min-width: 0;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+      .stepper button,
+      .stepper button:disabled:hover {
+        flex: none;
+        width: 38px;
+        padding: 0;
+        font: 18px/1 var(--mono);
+        letter-spacing: 0;
+        color: var(--muted);
+        background: var(--bg);
+        border: 1px solid var(--line);
+      }
+      .stepper button:first-child {
+        border-right: 0;
+      }
+      .stepper button:last-child {
+        border-left: 0;
+      }
+      .stepper button:hover {
+        color: var(--text);
+        background: var(--line);
+      }
+      .stepper button:disabled {
+        opacity: 0.4;
+      }
       input:focus,
       select:focus {
         outline: 2px solid var(--accent);
@@ -221,6 +396,25 @@
         grid-column: 1 / -1;
         margin: 0;
         overflow-wrap: anywhere;
+      }
+      .form-section {
+        grid-column: 1 / -1;
+        margin: 8px 0 0;
+        padding-top: 12px;
+        font: 12px var(--mono);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+      }
+      .note {
+        grid-column: 1 / -1;
+        margin: 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .quota.full {
+        color: var(--accent);
       }
       .error {
         grid-column: 1 / -1;
@@ -240,8 +434,12 @@
         color: var(--text);
       }
       @media (max-width: 560px) {
-        .server {
-          grid-template-columns: 1fr;
+        .server,
+        .panel {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .levelshot {
+          max-width: 320px;
         }
       }
     </style>
@@ -251,7 +449,9 @@
       <header>
         <h1>Quake<svg class="cube" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5 22 7.25 12 13 2 7.25Z" fill="#f08a62"/><path d="M2 7.25 12 13v10.5L2 17.75Z" fill="var(--accent)"/><path d="M22 7.25v10.5L12 23.5V13Z" fill="var(--accent-strong)"/></svg>Kube</h1>
         <div class="header-actions">
-          <div class="count"><span id="user"></span><span id="count"></span></div>
+          <div class="count">
+            <span id="user"></span><span id="count"></span><span class="quota" id="quota"></span>
+          </div>
           <button id="create-open" hidden>Create server</button>
         </div>
       </header>
@@ -266,12 +466,18 @@
           <label>Game <select name="preset" id="presets"></select></label>
           <label>Mode <select name="gameType" id="game-types"></select></label>
           <label>Map <select name="map" id="maps"></select></label>
-          <label id="bots">Bots <input name="bots" type="number" min="0" max="16" value="2"></label>
-          <label>Password <input name="password" type="password" placeholder="Optional"></label>
-          <p class="error" id="create-error"></p>
+          <label id="bots">Bots <input name="bots" type="number" min="0" max="16" value="2" inputmode="numeric"></label>
+          <label>Password <input name="password" type="password" placeholder="Optional" autocomplete="new-password"></label>
+          <p class="form-section">Match, blank for the game's defaults</p>
+          <label>Frag limit <input name="fragLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-step="5" data-start="20"></label>
+          <label>Time limit, min <input name="timeLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-step="5" data-start="10"></label>
+          <label>Capture limit <input name="captureLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-start="8"></label>
+          <label>Max players <input name="maxPlayers" type="number" min="1" max="64" placeholder="Default" inputmode="numeric" data-start="8"></label>
+          <p class="note" id="edit-note" hidden></p>
+          <p class="error" id="create-error" aria-live="polite"></p>
           <div class="form-actions">
             <button type="button" class="secondary" id="create-cancel">Cancel</button>
-            <button type="submit">Create</button>
+            <button type="submit" id="create-submit">Create</button>
           </div>
         </form>
       </dialog>
@@ -280,26 +486,43 @@
         <h2 id="delete-title">Delete server</h2>
         <form id="delete-form">
           <p class="message">Delete <b id="delete-name"></b>? Anyone playing will be disconnected.</p>
-          <p class="error" id="delete-error"></p>
+          <p class="error" id="delete-error" aria-live="polite"></p>
           <div class="form-actions">
             <button type="button" class="secondary" id="delete-cancel">Cancel</button>
-            <button type="submit">Delete</button>
+            <button type="submit" id="delete-submit">Delete</button>
           </div>
         </form>
       </dialog>
 
-      <p class="hint" id="native-hint" hidden>Native Quake 3 clients can connect to a server's address directly.</p>
+      <p class="hint" id="hint" hidden></p>
     </main>
 
     <template id="server-template">
       <div class="server">
-        <div>
-          <div class="title"><span class="dot"></span><span class="name"></span></div>
-          <div class="details"></div>
-        </div>
+        <button type="button" class="summary" aria-expanded="false">
+          <svg class="chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          <span class="title"><span class="dot"></span><span class="name"></span></span>
+          <span class="details"></span>
+          <span class="problem" hidden></span>
+        </button>
         <div class="actions">
           <a class="button play">Play</a>
-          <button class="secondary delete" hidden>Delete</button>
+          <button type="button" class="secondary edit" hidden>Edit</button>
+          <button type="button" class="secondary delete" hidden>Delete</button>
+        </div>
+      </div>
+    </template>
+
+    <template id="panel-template">
+      <div class="panel no-shot">
+        <img class="levelshot" alt="">
+        <div>
+          <p class="limits"></p>
+          <table class="scores" hidden>
+            <thead><tr><th>Player</th><th class="num">Score</th><th class="num">Ping</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="scores-note"></p>
         </div>
       </div>
     </template>
@@ -307,6 +530,15 @@
     <script>
       const serversEl = document.getElementById("servers");
       const template = document.getElementById("server-template");
+      const panelTemplate = document.getElementById("panel-template");
+
+      let config = { presets: [] };
+      let servers = [];
+      // Servers whose players are shown, by namespace/name, with their panels, which are kept
+      // between refreshes so their pictures don't reload.
+      const panels = new Map();
+      const key = (s) => `${s.namespace}/${s.name}`;
+      const serverUrl = (s) => `/api/servers/${s.namespace}/${s.name}`;
 
       function detail(label, value) {
         const span = document.createElement("span");
@@ -317,56 +549,201 @@
         return span;
       }
 
-      function render(servers) {
+      // Quake 3 colors names with ^ and a digit, e.g. ^1 for red. Black is shown gray, since
+      // it wouldn't show on the page.
+      const colors = ["#8a8a8a", "#ff5a4f", "#6fdc5a", "#f2d54a", "#5a8cff", "#4fd8e8", "#e45ae4", ""];
+      function colored(text) {
+        const parts = [];
+        let color = "";
+        for (const [i, part] of text.split(/\^([0-9a-zA-Z])/).entries()) {
+          if (i % 2 === 1) {
+            color = colors[(part.charCodeAt(0) - 48) & 7];
+            continue;
+          }
+          if (!part) continue;
+          const span = document.createElement("span");
+          span.textContent = part;
+          if (color) span.style.color = color;
+          parts.push(span);
+        }
+        return parts;
+      }
+
+      function minutes(ms) {
+        const m = Math.max(1, Math.ceil(ms / 60000));
+        return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+      }
+
+      function render() {
         document.getElementById("count").textContent =
           `${servers.filter((s) => s.ready).length} of ${servers.length} running`;
+        renderQuota();
         if (servers.length === 0) {
           serversEl.innerHTML = '<div class="empty">No servers yet.</div>';
           return;
         }
-        serversEl.replaceChildren(
-          ...servers.map((s) => {
-            const el = template.content.firstElementChild.cloneNode(true);
-            el.classList.toggle("ready", s.ready);
-            el.querySelector(".name").textContent = s.hostname || s.name;
-            const details = el.querySelector(".details");
-            if (!s.ready) {
-              details.append(detail("status", "starting"));
-            } else {
-              if (s.game) details.append(detail("game", s.game));
-              if (s.map) details.append(detail("map", s.map));
-              if (s.gameType) details.append(detail("mode", s.gameType));
-              if (s.humans != null) {
-                const bots = s.bots ? ` +${s.bots} bots` : "";
-                details.append(detail("players", `${s.humans}/${s.maxPlayers}${bots}`));
-              }
-              if (s.address) details.append(detail("address", s.address));
-              if (s.needsPassword) details.append(detail("password", "yes"));
-            }
-            if (s.owner) details.append(detail("owner", s.owner));
-            const play = el.querySelector(".play");
-            play.href = `/play/${s.namespace}/${s.name}/`;
-            play.classList.toggle("disabled", !s.ready || s.map == null);
-            const del = el.querySelector(".delete");
-            del.hidden = !s.deletable;
-            del.addEventListener("click", () => confirmDelete(s));
-            return el;
+        serversEl.replaceChildren(...servers.map(renderServer));
+      }
+
+      function renderServer(s) {
+        const el = template.content.firstElementChild.cloneNode(true);
+        const failed = !s.ready && !!s.message;
+        el.classList.toggle("ready", s.ready);
+        el.classList.toggle("failed", failed);
+        el.querySelector(".name").replaceChildren(...colored(s.hostname || s.name));
+        const details = el.querySelector(".details");
+        if (!s.ready) {
+          details.append(detail("status", failed ? "failed" : "starting"));
+        } else {
+          if (s.game) details.append(detail("game", s.game));
+          if (s.map) details.append(detail("map", s.map));
+          if (s.gameType) details.append(detail("mode", s.gameType));
+          if (s.humans != null) {
+            const bots = s.bots ? ` +${s.bots} bots` : "";
+            details.append(detail("players", `${s.humans}/${s.maxPlayers}${bots}`));
+          }
+          if (s.address) details.append(detail("address", s.address));
+          if (s.needsPassword) details.append(detail("password", "yes"));
+        }
+        if (s.owner) details.append(detail("owner", s.owner));
+        if (s.deletesAt) {
+          const left = s.deletesAt - Date.now();
+          details.append(detail("idle", left > 0 ? `deleted in ${minutes(left)}` : "deleting"));
+        }
+        const problem = el.querySelector(".problem");
+        problem.hidden = !failed;
+        problem.textContent = s.message || "";
+
+        const play = el.querySelector(".play");
+        play.href = `/play/${s.namespace}/${s.name}/`;
+        play.classList.toggle("disabled", !s.ready || s.map == null);
+        const edit = el.querySelector(".edit");
+        edit.hidden = !s.settings || !config.presets.some((p) => p.name === s.settings.preset);
+        edit.addEventListener("click", () => openServerDialog(s));
+        const del = el.querySelector(".delete");
+        del.hidden = !s.manageable;
+        del.addEventListener("click", () => confirmDelete(s));
+
+        const summary = el.querySelector(".summary");
+        summary.addEventListener("click", () => toggle(s));
+        const panel = panels.get(key(s));
+        summary.setAttribute("aria-expanded", String(!!panel));
+        if (panel) {
+          el.classList.add("open");
+          showLevelshot(panel, s);
+          el.append(panel);
+        }
+        return el;
+      }
+
+      function toggle(s) {
+        if (panels.has(key(s))) {
+          panels.delete(key(s));
+        } else {
+          panels.set(key(s), panelTemplate.content.firstElementChild.cloneNode(true));
+          refreshStatus(s);
+        }
+        render();
+      }
+
+      // The levelshot is the picture of the map the game shows while loading it.
+      function showLevelshot(panel, s) {
+        const img = panel.querySelector(".levelshot");
+        const src = s.ready && s.map ? `/play/${s.namespace}/${s.name}/levelshots/${s.map.toLowerCase()}.jpg` : "";
+        if (img.dataset.src === src) return;
+        img.dataset.src = src;
+        panel.classList.add("no-shot");
+        if (!src) return img.removeAttribute("src");
+        img.alt = `${s.map}`;
+        img.onload = () => panel.classList.remove("no-shot");
+        img.onerror = () => panel.classList.add("no-shot");
+        img.src = src;
+      }
+
+      async function refreshStatus(s) {
+        const panel = panels.get(key(s));
+        if (!panel) return;
+        const note = panel.querySelector(".scores-note");
+        const table = panel.querySelector(".scores");
+        if (!s.ready) {
+          table.hidden = true;
+          note.textContent = s.message ? "The server isn't running." : "The server is starting.";
+          return;
+        }
+        let status;
+        try {
+          const response = await fetch(`${serverUrl(s)}/status`);
+          if (!response.ok) throw new Error();
+          status = await response.json();
+        } catch {
+          table.hidden = true;
+          note.textContent = "The server didn't answer.";
+          return;
+        }
+        const limits = panel.querySelector(".limits");
+        limits.replaceChildren();
+        if (status.fragLimit) limits.append(detail("frag limit", status.fragLimit));
+        if (status.timeLimit) limits.append(detail("time limit", `${status.timeLimit}m`));
+        if (status.captureLimit) limits.append(detail("capture limit", status.captureLimit));
+        table.hidden = status.players.length === 0;
+        note.textContent = status.players.length === 0 ? "Nobody's playing." : "";
+        table.querySelector("tbody").replaceChildren(
+          ...status.players.map((player) => {
+            const row = document.createElement("tr");
+            const name = document.createElement("td");
+            name.append(...colored(player.name));
+            const score = document.createElement("td");
+            score.className = "num";
+            score.textContent = player.score;
+            const ping = document.createElement("td");
+            ping.className = player.bot ? "num bot" : "num";
+            ping.textContent = player.bot ? "bot" : player.ping;
+            row.append(name, score, ping);
+            return row;
           }),
         );
+      }
+
+      function renderQuota() {
+        const quota = document.getElementById("quota");
+        const create = document.getElementById("create-open");
+        if (!config.canCreate) return;
+        const created = servers.filter((s) => s.createdHere).length;
+        const mine = servers.filter((s) => s.mine).length;
+        const perUser = config.maxServersPerUser;
+        const parts = [`${created} of ${config.maxServers} created`];
+        if (perUser != null) parts.push(`${mine} of ${perUser} yours`);
+        let full = "";
+        if (perUser != null && mine >= perUser) {
+          full = `You have as many servers as each person can (${perUser}). Delete one to create another.`;
+        } else if (created >= config.maxServers) {
+          full = `The limit of ${config.maxServers} servers has been reached.`;
+        }
+        quota.textContent = parts.join(" · ");
+        quota.classList.toggle("full", !!full);
+        create.disabled = !!full;
+        create.title = full;
       }
 
       async function refresh() {
         try {
           const response = await fetch("/api/servers");
-          if (response.ok) render(await response.json());
-        } catch {}
+          if (!response.ok) return;
+          servers = await response.json();
+        } catch {
+          return;
+        }
+        // Forget the panels of servers that are gone.
+        for (const k of panels.keys()) {
+          if (!servers.some((s) => key(s) === k)) panels.delete(k);
+        }
+        render();
+        for (const s of servers) refreshStatus(s);
       }
-
-      let presets = [];
 
       // Offers the chosen game's modes and maps.
       function showPreset() {
-        const preset = presets.find((p) => p.name === document.getElementById("presets").value);
+        const preset = config.presets.find((p) => p.name === document.getElementById("presets").value);
         document.getElementById("game-types").replaceChildren(
           ...preset.gameTypes.map((name) => new Option(name, name)),
         );
@@ -378,17 +755,48 @@
         bots.querySelector("input").disabled = !preset.bots;
       }
 
-      async function setUpCreate() {
-        const config = await (await fetch("/api/config")).json();
+      async function setUp() {
+        config = await (await fetch("/api/config")).json();
         if (config.user) document.getElementById("user").textContent = config.user;
-        document.getElementById("native-hint").hidden = !config.nativeClients;
+        const hints = [];
+        if (config.nativeClients) hints.push("Native Quake 3 clients can connect to a server's address directly.");
+        if (config.canCreate && config.idleTimeout) {
+          hints.push(`Servers created here are deleted after ${minutes(config.idleTimeout * 1000)} without players.`);
+        }
+        const hint = document.getElementById("hint");
+        hint.textContent = hints.join(" ");
+        hint.hidden = hints.length === 0;
         if (!config.canCreate) return;
-        presets = config.presets;
         const select = document.getElementById("presets");
-        select.replaceChildren(...presets.map((p) => new Option(p.title, p.name)));
+        select.replaceChildren(...config.presets.map((p) => new Option(p.title, p.name)));
         select.addEventListener("change", showPreset);
         showPreset();
         document.getElementById("create-open").hidden = false;
+        renderQuota();
+      }
+
+      // Runs a dialog's request with its submit button disabled, so a double click doesn't
+      // send it twice, and shows why it failed.
+      async function submit(button, error, request, fallback) {
+        button.disabled = true;
+        error.textContent = "";
+        try {
+          const response = await request();
+          if (response.ok) return true;
+          error.textContent = (await response.text()) || fallback;
+        } catch {
+          error.textContent = fallback;
+        } finally {
+          button.disabled = false;
+        }
+        return false;
+      }
+
+      function closeOnBackdrop(dialog) {
+        // A click on the backdrop lands on the dialog itself, outside its contents.
+        dialog.addEventListener("click", (event) => {
+          if (event.target === dialog) dialog.close();
+        });
       }
 
       // Asks before deleting a server, in a dialog like the one for creating them.
@@ -396,64 +804,133 @@
       let deleting = null;
       function confirmDelete(server) {
         deleting = server;
-        document.getElementById("delete-name").textContent = server.hostname || server.name;
+        document.getElementById("delete-name").replaceChildren(...colored(server.hostname || server.name));
         document.getElementById("delete-error").textContent = "";
         deleteDialog.showModal();
       }
       document.getElementById("delete-cancel").addEventListener("click", () => deleteDialog.close());
-      deleteDialog.addEventListener("click", (event) => {
-        if (event.target === deleteDialog) deleteDialog.close();
-      });
+      closeOnBackdrop(deleteDialog);
       document.getElementById("delete-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const response = await fetch(`/api/servers/${deleting.namespace}/${deleting.name}`, {
-          method: "DELETE",
-        });
-        if (response.ok) {
+        const ok = await submit(
+          document.getElementById("delete-submit"),
+          document.getElementById("delete-error"),
+          () => fetch(serverUrl(deleting), { method: "DELETE" }),
+          "Deleting the server failed.",
+        );
+        if (ok) {
           deleteDialog.close();
           refresh();
-        } else {
-          document.getElementById("delete-error").textContent =
-            (await response.text()) || "Deleting the server failed.";
         }
       });
 
+      // The same dialog creates servers and changes them.
       const dialog = document.getElementById("create");
-      document.getElementById("create-open").addEventListener("click", () => {
+      const form = document.getElementById("create-form");
+      let editing = null;
+      function openServerDialog(server) {
+        editing = server;
+        form.reset();
+        const presets = document.getElementById("presets");
+        document.getElementById("create-title").textContent = server ? "Edit server" : "New server";
+        document.getElementById("create-submit").textContent = server ? "Save" : "Create";
+        document.getElementById("edit-note").hidden = !server;
         document.getElementById("create-error").textContent = "";
+        if (server) {
+          const settings = server.settings;
+          presets.value = settings.preset;
+          showPreset();
+          showEditNote();
+          for (const [name, value] of Object.entries(settings)) {
+            const field = form.elements.namedItem(name);
+            if (field && name !== "preset" && value != null) field.value = value;
+          }
+        } else {
+          showPreset();
+        }
         dialog.showModal();
-      });
-      document.getElementById("create-cancel").addEventListener("click", () => dialog.close());
-      // A click on the backdrop lands on the dialog itself, outside its contents.
-      dialog.addEventListener("click", (event) => {
-        if (event.target === dialog) dialog.close();
-      });
+      }
+      // Puts − and + buttons around each number field. They step by data-step, start a blank
+      // field at data-start, and going below the minimum blanks a field whose blank means the
+      // game's default.
+      for (const input of form.querySelectorAll('input[type="number"]')) {
+        const label = input.closest("label").firstChild.textContent.trim().toLowerCase();
+        const step = Number(input.dataset.step || 1);
+        const min = Number(input.min);
+        const max = Number(input.max);
+        const start = Number(input.dataset.start ?? min);
+        const optional = input.placeholder === "Default";
+        const button = (text, name, dir) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = text;
+          b.setAttribute("aria-label", `${name} ${label}`);
+          b.tabIndex = -1;
+          b.addEventListener("click", () => {
+            if (input.disabled) return;
+            if (input.value === "") {
+              if (dir > 0) input.value = start;
+            } else {
+              const value = Number(input.value) + dir * step;
+              if (value < min) input.value = optional ? "" : min;
+              else input.value = Math.min(value, max);
+            }
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+          });
+          return b;
+        };
+        const stepper = document.createElement("span");
+        stepper.className = "stepper";
+        input.replaceWith(stepper);
+        stepper.append(button("\u2212", "Less", -1), input, button("+", "More", 1));
+      }
 
-      document.getElementById("create-form").addEventListener("submit", async (event) => {
+      // Says how saving changes the server: right away, or by restarting it for another game.
+      function showEditNote() {
+        const note = document.getElementById("edit-note");
+        if (!editing) return;
+        note.textContent =
+          document.getElementById("presets").value === editing.settings.preset
+            ? "Changes apply right away and reload the map. Players stay connected."
+            : "Switching games restarts the server, which disconnects anyone playing until it's back.";
+      }
+      document.getElementById("presets").addEventListener("change", showEditNote);
+
+      document.getElementById("create-open").addEventListener("click", () => openServerDialog(null));
+      document.getElementById("create-cancel").addEventListener("click", () => dialog.close());
+      closeOnBackdrop(dialog);
+
+      form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const form = event.target;
-        const error = document.getElementById("create-error");
         const data = Object.fromEntries(new FormData(form));
         data.bots = Number(data.bots ?? 0);
-        const response = await fetch("/api/servers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        });
-        if (response.ok) {
-          error.textContent = "";
-          form.reset();
-          showPreset();
+        // Blank limits mean the game's defaults.
+        for (const name of ["fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {
+          data[name] = data[name] ? Number(data[name]) : null;
+        }
+        const server = editing;
+        const ok = await submit(
+          document.getElementById("create-submit"),
+          document.getElementById("create-error"),
+          () =>
+            fetch(server ? serverUrl(server) : "/api/servers", {
+              method: server ? "PATCH" : "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            }),
+          server ? "Saving the server failed." : "Creating the server failed.",
+        );
+        if (ok) {
           dialog.close();
           refresh();
-        } else {
-          error.textContent = (await response.text()) || "Creating the server failed.";
         }
       });
 
-      setUpCreate();
-      refresh();
-      setInterval(refresh, 5000);
+      setUp().then(refresh);
+      // Only refreshes while the page is visible, and right away when it's shown again.
+      setInterval(() => document.hidden || refresh(), 5000);
+      document.addEventListener("visibilitychange", () => document.hidden || refresh());
+    </script>
     </script>
   </body>
 </html>

@@ -8,9 +8,9 @@ pub use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec, DeploymentStrategy},
         core::v1::{
-            Container, ContainerPort, EmptyDirVolumeSource, GRPCAction, ImageVolumeSource, Node,
-            Pod, PodSpec, PodTemplateSpec, Probe, Secret, SecretVolumeSource, Service, ServicePort,
-            ServiceSpec, Volume, VolumeMount,
+            ConfigMap, Container, ContainerPort, EmptyDirVolumeSource, GRPCAction, HTTPGetAction,
+            ImageVolumeSource, Node, Pod, PodSpec, PodTemplateSpec, Probe, Secret,
+            SecretVolumeSource, Service, ServicePort, ServiceSpec, Volume, VolumeMount,
         },
     },
     apimachinery::pkg::{apis::meta::v1::LabelSelector, util::intstr::IntOrString},

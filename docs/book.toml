@@ -4,6 +4,10 @@ language = "en"
 src = "src"
 title = "The QuakeKube Book"
 
+# Draws ```pikchr blocks as SVGs (hack/mdbook-pikchr).
+[preprocessor.pikchr]
+command = "go run ../hack/mdbook-pikchr"
+
 [output.html]
 git-repository-url = "https://github.com/ChrisRx/quake-kube/tree/main"
 edit-url-template = "https://github.com/ChrisRx/quake-kube/edit/main/{path}"
@@ -12,3 +16,5 @@ edit-url-template = "https://github.com/ChrisRx/quake-kube/edit/main/{path}"
 default-theme = "coal"
 preferred-dark-theme = "coal"
 additional-css = ["theme/quake-kube.css"]
+# Opens diagrams larger when they're clicked.
+additional-js = ["theme/diagram.js"]

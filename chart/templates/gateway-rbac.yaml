@@ -44,7 +44,8 @@ subjects:
     namespace: {{ .Release.Namespace }}
 {{- if gt (int .Values.gateway.maxServers) 0 }}
 ---
-# Creating and deleting servers, only in the namespace the web app uses.
+# Creating, changing and deleting servers, only in the namespace the web app
+# uses. Patching marks servers idle.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -56,7 +57,22 @@ metadata:
 rules:
   - apiGroups: ["quake.kube"]
     resources: ["quakeservers"]
-    verbs: ["create", "delete"]
+    verbs: ["create", "update", "patch", "delete"]
+  # Reading servers' rcon passwords, which authorize sending a server its
+  # changed config so the change applies right away. RBAC can't limit this to
+  # the servers' Secrets, so give the web app a namespace of its own (see
+  # gateway.namespace) if others' Secrets are in the release namespace.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+  # Running pods that make thumbnails of each game's maps, which are kept in
+  # ConfigMaps.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
