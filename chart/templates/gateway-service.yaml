@@ -6,6 +6,14 @@ metadata:
   labels:
     {{- include "chart.labels" . | nindent 4 }}
     app.kubernetes.io/component: gateway
+  {{- $annotations := deepCopy .Values.gateway.service.annotations }}
+  {{- if and .Values.gateway.gke.enabled .Values.gateway.ingress.enabled }}
+  {{- $_ := set $annotations "cloud.google.com/backend-config" (dict "default" (printf "%s-gateway" (include "chart.fullname" .)) | toJson) }}
+  {{- end }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.gateway.service.type }}
   selector:

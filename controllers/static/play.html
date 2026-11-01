@@ -91,8 +91,19 @@
         font: 13px ui-monospace, monospace;
         color: #e8e2d9;
       }
-      #status:empty {
+      #status:empty,
+      #download:empty {
         display: none;
+      }
+      #download {
+        margin: 0;
+        font-size: 13px;
+        color: #a39a8f;
+      }
+      #download .warning {
+        display: block;
+        margin-top: 4px;
+        color: #d9a441;
       }
     </style>
     <script>
@@ -100,14 +111,23 @@
         namespace: "{{NAMESPACE}}",
         name: "{{NAME}}",
         needsPassword: {{NEEDS_PASSWORD}},
+        // The maps it rotates through.
+        maps: {{MAPS}},
       };
       const base = `/play/${server.namespace}/${server.name}`;
       const clientVersion = "{{CLIENT_VERSION}}";
+      // Whether the client can read paks on demand, which needs the gateway's JSPI build and a
+      // browser with JSPI.
+      const onDemand = {{ON_DEMAND}} && "Suspending" in WebAssembly;
 
       // Where the gateway accepts WebTransport sessions, or null when it doesn't.
       const webTransport = {{WEBTRANSPORT}};
+
+      // From the signed-in user's email address, for people who haven't chosen a name.
+      const suggestedName = {{SUGGESTED_NAME}};
     </script>
     <script src="/static/gamesocket.js"></script>
+    <script src="/static/paks.js"></script>
   </head>
   <body>
     <canvas id="canvas"></canvas>
@@ -116,6 +136,7 @@
         <h1>{{NAME}}</h1>
         <input id="player-name" placeholder="Player name" autocomplete="nickname" maxlength="32">
         <input id="password" type="password" placeholder="Server password" hidden>
+        <p id="download"></p>
         <label id="eula-row">
           <input id="eula" type="checkbox">
           <span>I agree to the <a href="/static/eula.txt" target="_blank">Quake 3 demo license</a>, which covers the game files this downloads.</span>
@@ -147,41 +168,136 @@
         } catch {}
       }
 
-      nameInput.value = stored("playerName") || "";
+      nameInput.value = stored("playerName") || suggestedName || "";
       passwordInput.hidden = !server.needsPassword;
       document.getElementById("eula-row").hidden = stored("demoEulaAccepted") === "yes";
 
+      const MB = 1e6;
+      const formatSize = (bytes) => `${Math.max(1, Math.round(bytes / MB)).toLocaleString()} MB`;
+      const total = (assets) => assets.reduce((sum, asset) => sum + asset.compressed, 0);
+      // Everything downloaded stays in memory while playing, which phones run out of first.
+      const isPhone =
+        navigator.userAgentData?.mobile ?? /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
       // Pak names in the manifest come with checksums, so a cached copy never goes stale and
       // can be shared by every server using the same file. The cache needs HTTPS.
-      async function loadAsset(asset) {
-        const key = `/cache/${asset.checksum}/${asset.name}`;
-        const cache = window.caches ? await caches.open("quake-kube-assets").catch(() => null) : null;
-        let response = await cache?.match(key);
-        if (!response) {
-          const name = asset.name.replace(/(.+\/|)(.+?)$/, `$1${asset.checksum}-$2`);
-          response = await fetch(`${base}/assets/${name}`);
-          if (!response.ok) {
-            throw new Error(`Downloading ${asset.name} failed (${response.status}).`);
-          }
-          await cache?.put(key, response.clone()).catch(() => {});
+      const cacheKey = (asset) => `/cache/${asset.checksum}/${asset.name}`;
+      const openCache = () =>
+        window.caches ? caches.open("quake-kube-assets").catch(() => null) : Promise.resolve(null);
+
+      // Calls onProgress with each part's size as it arrives.
+      async function loadAsset(asset, onProgress) {
+        const cache = await openCache();
+        const cached = await cache?.match(cacheKey(asset));
+        if (cached) {
+          const data = new Uint8Array(await cached.arrayBuffer());
+          onProgress(asset.compressed);
+          return data;
         }
-        return new Uint8Array(await response.arrayBuffer());
+        const name = asset.name.replace(/(.+\/|)(.+?)$/, `$1${asset.checksum}-$2`);
+        const response = await fetch(`${base}/assets/${name}`);
+        if (!response.ok) {
+          throw new Error(`Downloading ${asset.name} failed (${response.status}).`);
+        }
+        // Cached from a copy of the response as it downloads. Reading back a Blob of the parts
+        // fails for paks as large as a mod's.
+        const caching = cache?.put(cacheKey(asset), response.clone()).catch(() => {});
+        const data = new Uint8Array(asset.compressed);
+        let size = 0;
+        const reader = response.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (size + value.length > data.length) {
+            throw new Error(`Downloading ${asset.name} failed (larger than expected).`);
+          }
+          data.set(value, size);
+          size += value.length;
+          onProgress(value.length);
+        }
+        await caching;
+        return data.subarray(0, size);
       }
 
-      async function loadGameFiles(gameDirs) {
-        const manifest = await (await fetch(`${base}/assets/manifest.json`)).json();
+      // The files of the server's game: those needed to join, and the paks of the other maps it
+      // rotates through, which can come later. Other maps' paks aren't needed, unless the
+      // content's profile says a map reads files from them.
+      async function gameFiles() {
+        const [info, manifest, profile] = await Promise.all([
+          fetch(`${base}/info`).then((response) => response.json()),
+          fetch(`${base}/assets/manifest.json`).then((response) => response.json()),
+          fetch(`${base}/paks/profile.json`)
+            .then((response) => (response.ok ? response.json() : null))
+            .catch(() => null),
+        ]);
+        // A server running a mod reports the mod's directory as its game.
+        const gameDirs = ["baseq3", info.game].filter(Boolean);
+        const map = (info.mapname || "").toLowerCase();
         const assets = manifest.filter((asset) => gameDirs.includes(asset.name.split("/")[0]));
-        const total = assets.reduce((sum, asset) => sum + asset.compressed, 0);
-        let loaded = 0;
-        return Promise.all(
-          assets.map(async (asset) => {
-            const data = await loadAsset(asset);
-            loaded += asset.compressed;
-            setStatus(`Loading game files… ${Math.round((100 * loaded) / total)}%`);
-            return { path: `/${asset.name}`, data };
-          }),
-        );
+        // Whether a map reads from a map's pak. The renderer reads every pak's shader scripts,
+        // so those don't count.
+        const reads = (name, asset) =>
+          asset.maps.includes(name) ||
+          Object.entries(mergeFiles(profile?.common, profile?.maps?.[name])).some(
+            ([pak, files]) => pak === asset.name && files.some((file) => !file.startsWith("scripts/")),
+          );
+        return {
+          info,
+          profile,
+          paks: assets.filter((asset) => asset.name.endsWith(".pk3")),
+          now: assets.filter((asset) => !asset.maps || reads(map, asset)),
+          later: assets.filter(
+            (asset) =>
+              asset.maps &&
+              !reads(map, asset) &&
+              server.maps.some((name) => reads(name, asset)),
+          ),
+        };
       }
+
+      // Combines lists of files by pak, like a profile's.
+      function mergeFiles(...lists) {
+        const files = {};
+        for (const list of lists) {
+          for (const [pak, names] of Object.entries(list ?? {})) (files[pak] ??= []).push(...names);
+        }
+        return files;
+      }
+
+      function writeFile(module, path, data) {
+        module.FS.mkdirTree(path.replace(/\/[^/]+$/, ""));
+        // Mods can have gigabytes of paks, so the files aren't copied.
+        module.FS.writeFile(path, data, { canOwn: true });
+      }
+
+      // Says how much joining downloads, before anyone commits to it.
+      async function describeDownload() {
+        const download = document.getElementById("download");
+        if (onDemand) {
+          download.textContent = "Game files load as the game needs them.";
+          return;
+        }
+        const { now } = await gameFiles();
+        const size = total(now);
+        const cache = await openCache();
+        let cached = 0;
+        for (const asset of now) {
+          if (await cache?.match(cacheKey(asset))) cached += asset.compressed;
+        }
+        download.textContent =
+          cached >= size
+            ? `Game files: ${formatSize(size)}, already downloaded.`
+            : cached > 0
+              ? `Joining downloads ${formatSize(size - cached)} of ${formatSize(size)} of game files.`
+              : `Joining downloads ${formatSize(size)} of game files.`;
+        if (isPhone && size > 500 * MB) {
+          const warning = document.createElement("span");
+          warning.className = "warning";
+          warning.textContent = "Phones may not have enough memory for a game this large.";
+          download.append(warning);
+        }
+      }
+      describeDownload().catch(() => {});
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -197,10 +313,40 @@
 
         try {
           setStatus("Loading game files…");
-          const info = await (await fetch(`${base}/info`)).json();
-          // A server running a mod reports the mod's directory as its game.
-          const gameDirs = ["baseq3", info.game].filter(Boolean);
-          const files = await loadGameFiles(gameDirs);
+          const { info, profile, paks, now, later } = await gameFiles();
+          const map = (info.mapname || "").toLowerCase();
+          let files, remote;
+          if (onDemand) {
+            remote = new RemotePaks();
+            await Promise.all(paks.map((asset) => remote.add(asset)));
+            await remote.openCache();
+            globalThis.quakeKubePaks = remote;
+            if (profile) {
+              let loaded = 0;
+              const { total: size, done } = remote.prefetch(
+                mergeFiles(profile.common, profile.maps?.[map]),
+                (bytes) => {
+                  loaded += bytes;
+                  setStatus(`Loading game files… ${formatSize(loaded)} of ${formatSize(size)}`);
+                },
+              );
+              await done;
+            }
+            // Empty stand-ins, so the engine finds the paks it then reads through remote.
+            files = paks.map((asset) => ({ path: `/${asset.name}`, data: new Uint8Array(0) }));
+          } else {
+            const size = total(now);
+            let loaded = 0;
+            files = await Promise.all(
+              now.map(async (asset) => ({
+                path: `/${asset.name}`,
+                data: await loadAsset(asset, (bytes) => {
+                  loaded += bytes;
+                  setStatus(`Loading game files… ${formatSize(loaded)} of ${formatSize(size)}`);
+                }),
+              })),
+            );
+          }
 
           setStatus("Starting…");
           const args = [
@@ -220,18 +366,21 @@
           // which the engine treats as a server of its own.
           args.push("+connect", `${server.name}.${server.namespace}`);
 
-          const { default: ioquake3 } = await import(`/client/ioquake3.js?v=${clientVersion}`);
+          const client = onDemand ? "/client/jspi" : "/client";
+          const { default: ioquake3 } = await import(`${client}/ioquake3.js?v=${clientVersion}`);
           document.getElementById("join").remove();
-          await ioquake3({
+          let started;
+          const engineStarted = new Promise((resolve) => (started = resolve));
+          const module = await ioquake3({
             canvas: document.getElementById("canvas"),
             arguments: args,
-            locateFile: (file) => `/client/${file}?v=${clientVersion}`,
+            locateFile: (file) => `${client}/${file}?v=${clientVersion}`,
+            // The JSPI build calls this once main has started the engine.
+            quakeKubeStarted: () => started(),
             preRun: [
               (module) => {
-                // Mods can have gigabytes of paks, so the files aren't copied.
                 for (const file of files.splice(0)) {
-                  module.FS.mkdirTree(file.path.replace(/\/[^/]+$/, ""));
-                  module.FS.writeFile(file.path, file.data, { canOwn: true });
+                  writeFile(module, file.path, file.data);
                 }
               },
             ],
@@ -240,6 +389,28 @@
             printErr: (text) => console.warn(text),
             onExit: () => (location.href = "/"),
           });
+          if (onDemand) {
+            // The files of the server's other maps, for when it changes map.
+            const others = server.maps.filter((name) => name !== map);
+            if (profile && others.length > 0) {
+              remote.prefetch(mergeFiles(...others.map((name) => profile.maps?.[name])));
+            }
+            // The page runs frames, as a JSPI export that can wait for pak reads.
+            await engineStarted;
+            for (;;) {
+              await module._quake_kube_frame();
+              await new Promise(requestAnimationFrame);
+            }
+          }
+          // The paks of the server's other maps, for when it changes map. The engine looks
+          // for paks again whenever it loads a map.
+          for (const asset of later) {
+            try {
+              writeFile(module, `/${asset.name}`, await loadAsset(asset, () => {}));
+            } catch (error) {
+              console.warn(`Downloading ${asset.name} failed:`, error);
+            }
+          }
         } catch (error) {
           setStatus(error.message);
           button.disabled = false;

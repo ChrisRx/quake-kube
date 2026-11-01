@@ -24,4 +24,10 @@ rand = "0.10.3"
 axum = { version = "0.8.9", features = ["ws"] }
 wtransport = "0.7.2"
 # Only used for plain HTTP inside the cluster, so no TLS.
-reqwest = { version = "0.13.5", default-features = false, features = ["stream"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider", "stream"] }
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["rust_crypto", "use_pem"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+
+[dev-dependencies]
+p256 = { version = "0.13.2", features = ["pkcs8", "jwk"] }
+rand_core = { version = "0.6", features = ["getrandom"] }

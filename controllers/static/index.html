@@ -60,6 +60,10 @@
         color: var(--muted);
       }
       .count {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 4px 18px;
         font: 13px var(--mono);
         color: var(--muted);
       }
@@ -216,7 +220,7 @@
     <main>
       <header>
         <h1>Quake<span>/</span>Kube</h1>
-        <span class="count" id="count"></span>
+        <div class="count"><span id="user"></span><span id="count"></span></div>
       </header>
 
       <h2>Servers</h2>
@@ -291,6 +295,7 @@
               if (s.address) details.append(detail("address", s.address));
               if (s.needsPassword) details.append(detail("password", "yes"));
             }
+            if (s.owner) details.append(detail("owner", s.owner));
             const play = el.querySelector(".play");
             play.href = `/play/${s.namespace}/${s.name}/`;
             play.classList.toggle("disabled", !s.ready || s.map == null);
@@ -298,7 +303,8 @@
             del.hidden = !s.deletable;
             del.addEventListener("click", async () => {
               if (!confirm(`Delete ${s.name}? Anyone playing will be disconnected.`)) return;
-              await fetch(`/api/servers/${s.namespace}/${s.name}`, { method: "DELETE" });
+              const response = await fetch(`/api/servers/${s.namespace}/${s.name}`, { method: "DELETE" });
+              if (!response.ok) alert((await response.text()) || "Deleting the server failed.");
               refresh();
             });
             return el;
@@ -331,6 +337,7 @@
 
       async function setUpCreate() {
         const config = await (await fetch("/api/config")).json();
+        if (config.user) document.getElementById("user").textContent = config.user;
         if (!config.canCreate) return;
         presets = config.presets;
         const select = document.getElementById("presets");

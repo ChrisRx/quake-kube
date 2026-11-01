@@ -7,6 +7,7 @@ use std::io::IsTerminal;
 use std::path::Path;
 use tracing_subscriber::EnvFilter;
 
+mod auth;
 mod config;
 mod error;
 mod gateway;

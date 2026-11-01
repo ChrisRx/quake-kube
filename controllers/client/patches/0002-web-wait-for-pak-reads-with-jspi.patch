@@ -1,0 +1,176 @@
+Let the web client read paks from the page, waiting for the network with JSPI.
+
+Built with QUAKE_KUBE_JSPI, unzip reads paks the page has registered from the
+parts of them it holds, and waits while the page fetches anything missing. JSPI
+can only suspend inside a promising export, so instead of Emscripten's main
+loop, which calls Com_Frame from JavaScript, the page runs each frame through
+the exported quake_kube_frame, starting once main calls quakeKubeStarted.
+
+diff --git a/code/qcommon/ioapi.c b/code/qcommon/ioapi.c
+index ff394b3..6f60837 100644
+--- a/code/qcommon/ioapi.c
++++ b/code/qcommon/ioapi.c
+@@ -168,9 +168,131 @@ int ZCALLBACK ferror_file_func (opaque, stream)
+     return ret;
+ }
+ 
++#ifdef QUAKE_KUBE_JSPI
++/* The web client can hold only the parts of a pak the engine reads. The page fetches what's
++   missing when the engine reads it, which the engine waits for using JSPI. */
++#include <emscripten.h>
++
++typedef struct {
++    int pak;    /* the page's pak, or 0 for an ordinary file */
++    double pos;
++    FILE* file;
++} remote_file;
++
++EM_JS(int, quake_kube_pak_open, (const char* path), {
++    return globalThis.quakeKubePaks ? globalThis.quakeKubePaks.open(UTF8ToString(path)) : 0;
++});
++
++EM_JS(double, quake_kube_pak_size, (int pak), {
++    return globalThis.quakeKubePaks.size(pak);
++});
++
++/* Copies the range if the page has it, returning how much was copied, or -1 if part of it
++   is missing. */
++EM_JS(int, quake_kube_pak_read, (int pak, double pos, void* buf, int size), {
++    return globalThis.quakeKubePaks.read(pak, pos, HEAPU8.subarray(buf, buf + size));
++});
++
++EM_ASYNC_JS(void, quake_kube_pak_fetch, (int pak, double pos, int size), {
++    await globalThis.quakeKubePaks.fetch(pak, pos, size);
++});
++
++static voidpf ZCALLBACK remote_open_file_func (voidpf opaque, const char* filename, int mode)
++{
++    remote_file* f;
++    FILE* file = NULL;
++    int pak = 0;
++    if (filename != NULL && (mode & ZLIB_FILEFUNC_MODE_READWRITEFILTER) == ZLIB_FILEFUNC_MODE_READ)
++        pak = quake_kube_pak_open(filename);
++    if (!pak && (file = (FILE*)fopen_file_func(opaque, filename, mode)) == NULL)
++        return NULL;
++    f = (remote_file*)malloc(sizeof(remote_file));
++    f->pak = pak;
++    f->pos = 0;
++    f->file = file;
++    return f;
++}
++
++static uLong ZCALLBACK remote_read_file_func (voidpf opaque, voidpf stream, void* buf, uLong size)
++{
++    remote_file* f = (remote_file*)stream;
++    int n;
++    if (!f->pak)
++        return fread_file_func(opaque, f->file, buf, size);
++    n = quake_kube_pak_read(f->pak, f->pos, buf, (int)size);
++    if (n < 0) {
++        quake_kube_pak_fetch(f->pak, f->pos, (int)size);
++        n = quake_kube_pak_read(f->pak, f->pos, buf, (int)size);
++    }
++    /* A range that couldn't be fetched reads as the end of the pak. */
++    if (n < 0)
++        n = 0;
++    f->pos += n;
++    return (uLong)n;
++}
++
++static uLong ZCALLBACK remote_write_file_func (voidpf opaque, voidpf stream, const void* buf, uLong size)
++{
++    remote_file* f = (remote_file*)stream;
++    return f->pak ? 0 : fwrite_file_func(opaque, f->file, buf, size);
++}
++
++static long ZCALLBACK remote_tell_file_func (voidpf opaque, voidpf stream)
++{
++    remote_file* f = (remote_file*)stream;
++    return f->pak ? (long)f->pos : ftell_file_func(opaque, f->file);
++}
++
++static long ZCALLBACK remote_seek_file_func (voidpf opaque, voidpf stream, uLong offset, int origin)
++{
++    remote_file* f = (remote_file*)stream;
++    if (!f->pak)
++        return fseek_file_func(opaque, f->file, offset, origin);
++    switch (origin)
++    {
++    case ZLIB_FILEFUNC_SEEK_CUR :
++        f->pos += offset;
++        break;
++    case ZLIB_FILEFUNC_SEEK_END :
++        f->pos = quake_kube_pak_size(f->pak) + offset;
++        break;
++    case ZLIB_FILEFUNC_SEEK_SET :
++        f->pos = offset;
++        break;
++    default: return -1;
++    }
++    return 0;
++}
++
++static int ZCALLBACK remote_close_file_func (voidpf opaque, voidpf stream)
++{
++    remote_file* f = (remote_file*)stream;
++    int ret = f->pak ? 0 : fclose_file_func(opaque, f->file);
++    free(f);
++    return ret;
++}
++
++static int ZCALLBACK remote_error_file_func (voidpf opaque, voidpf stream)
++{
++    remote_file* f = (remote_file*)stream;
++    return f->pak ? 0 : ferror_file_func(opaque, f->file);
++}
++#endif
++
+ void fill_fopen_filefunc (pzlib_filefunc_def)
+   zlib_filefunc_def* pzlib_filefunc_def;
+ {
++#ifdef QUAKE_KUBE_JSPI
++    pzlib_filefunc_def->zopen_file = remote_open_file_func;
++    pzlib_filefunc_def->zread_file = remote_read_file_func;
++    pzlib_filefunc_def->zwrite_file = remote_write_file_func;
++    pzlib_filefunc_def->ztell_file = remote_tell_file_func;
++    pzlib_filefunc_def->zseek_file = remote_seek_file_func;
++    pzlib_filefunc_def->zclose_file = remote_close_file_func;
++    pzlib_filefunc_def->zerror_file = remote_error_file_func;
++    pzlib_filefunc_def->opaque = NULL;
++    return;
++#endif
+     pzlib_filefunc_def->zopen_file = fopen_file_func;
+     pzlib_filefunc_def->zread_file = fread_file_func;
+     pzlib_filefunc_def->zwrite_file = fwrite_file_func;
+diff --git a/code/sys/sys_main.c b/code/sys/sys_main.c
+index e3b63cb..9b21ac0 100644
+--- a/code/sys/sys_main.c
++++ b/code/sys/sys_main.c
+@@ -782,6 +782,13 @@ void Sys_SigHandler( int signal )
+ main
+ =================
+ */
++#ifdef QUAKE_KUBE_JSPI
++EMSCRIPTEN_KEEPALIVE void quake_kube_frame( void )
++{
++	Com_Frame( );
++}
++#endif
++
+ int main( int argc, char **argv )
+ {
+ 	int   i;
+@@ -887,7 +894,12 @@ int main( int argc, char **argv )
+ 	signal( SIGTERM, Sys_SigHandler );
+ 	signal( SIGINT, Sys_SigHandler );
+ 
+-#ifdef __EMSCRIPTEN__
++#if defined(QUAKE_KUBE_JSPI)
++	// The page runs each frame with quake_kube_frame, as a JSPI export, so the engine can
++	// wait for the network while reading files. It starts once the engine has.
++	EM_ASM( Module['quakeKubeStarted'] && Module['quakeKubeStarted']() );
++	emscripten_exit_with_live_runtime();
++#elif defined(__EMSCRIPTEN__)
+ 	emscripten_set_main_loop( Com_Frame, 0, 1 );
+ #else
+ 	while( 1 )

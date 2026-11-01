@@ -32,11 +32,16 @@ pub struct GatewayConfig {
     /// How many servers can be created from the web app at once. 0 turns creating servers off.
     #[serde(default = "GatewayConfig::default_max_servers")]
     pub max_servers: usize,
+    /// How many of those each person can have at once, when the gateway knows who people are.
+    #[serde(default)]
+    pub max_servers_per_user: Option<usize>,
     /// The games the web app offers when creating a server.
     #[serde(default = "GatewayConfig::default_presets")]
     pub presets: Vec<Preset>,
     #[serde(default)]
     pub webtransport: WebTransportConfig,
+    #[serde(default)]
+    pub auth: AuthConfig,
     /// Directory with the ioquake3 web client's ioquake3.js and ioquake3.wasm.
     #[serde(default = "GatewayConfig::default_client_dir")]
     pub client_dir: std::path::PathBuf,
@@ -57,6 +62,62 @@ pub struct WebTransportConfig {
     /// Directory with a tls.crt and tls.key that browsers trust. When unset, the gateway uses a
     /// self-signed certificate, which browsers accept by its hash.
     pub tls_dir: Option<std::path::PathBuf>,
+}
+
+/// How the gateway knows who people are. It doesn't sign them in itself: a proxy in front of it
+/// does, and passes on who they are with each request.
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AuthConfig {
+    pub mode: AuthMode,
+    pub iap: IapConfig,
+    pub header: HeaderAuthConfig,
+    /// File with the key that signs browsers' WebTransport tickets. When unset, each gateway
+    /// replica makes its own, so with several replicas a ticket may not work on the replica a
+    /// session reaches.
+    pub ticket_key_file: Option<std::path::PathBuf>,
+}
+
+#[derive(Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthMode {
+    /// Anyone who reaches the web app can use it, and servers have no owners.
+    #[default]
+    None,
+    /// Google Cloud's Identity-Aware Proxy, whose signed assertion is checked.
+    Iap,
+    /// Another proxy that signs people in, e.g. oauth2-proxy, which names them in a header. The
+    /// gateway must only be reachable through it.
+    Header,
+}
+
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct IapConfig {
+    /// The audience IAP signs its assertions for, e.g.
+    /// /projects/123/global/backendServices/456.
+    pub audience: Option<String>,
+    /// Accepts any audience in this project when the audience isn't known in advance, e.g.
+    /// because GKE names the backend service.
+    pub project_number: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default, rename_all = "camelCase")]
+pub struct HeaderAuthConfig {
+    /// Header with the user's email address.
+    pub user: String,
+    /// Header with the user's groups, separated by commas.
+    pub groups: Option<String>,
+}
+
+impl Default for HeaderAuthConfig {
+    fn default() -> Self {
+        HeaderAuthConfig {
+            user: "X-Forwarded-Email".to_owned(),
+            groups: None,
+        }
+    }
 }
 
 impl Default for WebTransportConfig {
@@ -158,8 +219,10 @@ impl Default for GatewayConfig {
             port: Self::default_port(),
             namespace: Self::default_namespace(),
             max_servers: Self::default_max_servers(),
+            max_servers_per_user: None,
             presets: Self::default_presets(),
             webtransport: WebTransportConfig::default(),
+            auth: AuthConfig::default(),
             client_dir: Self::default_client_dir(),
         }
     }
