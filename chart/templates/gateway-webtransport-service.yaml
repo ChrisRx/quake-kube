@@ -1,0 +1,24 @@
+{{- if .Values.gateway.webtransport.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chart.fullname" . }}-gateway-webtransport
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  {{- with .Values.gateway.webtransport.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.gateway.webtransport.service.type }}
+  selector:
+    {{- include "chart.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  ports:
+    - name: webtransport
+      port: {{ .Values.gateway.webtransport.service.port }}
+      targetPort: webtransport
+      protocol: UDP
+{{- end }}

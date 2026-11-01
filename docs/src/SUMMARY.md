@@ -7,6 +7,8 @@
 - [Configuration](configuration.md)
   - [Add Bots](add-bots.md)
   - [Setting A Password](setting-a-password.md)
-  - [Add Custom Maps](add-custom-maps.md)
+  - [Add Mods And Maps](add-custom-maps.md)
+
+- [Development](development.md)
 
 - [Credits](credits.md)

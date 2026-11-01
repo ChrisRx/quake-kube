@@ -1,0 +1,227 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: quakeservers.quake.kube
+spec:
+  group: quake.kube
+  names:
+    kind: QuakeServer
+    plural: quakeservers
+    shortNames:
+    - qs
+    singular: quakeserver
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .status.address
+      name: Address
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: A Quake 3 dedicated server managed by quake-kube.
+        properties:
+          spec:
+            description: A Quake 3 dedicated server. Every field is optional and falls back to the server's defaults.
+            properties:
+              bot:
+                nullable: true
+                properties:
+                  minPlayers:
+                    description: Bots are added until there are at least this many players.
+                    format: int32
+                    nullable: true
+                    type: integer
+                  noChat:
+                    nullable: true
+                    type: boolean
+                type: object
+              commands:
+                description: Console commands run once the server starts, e.g. "addbot sarge 2".
+                items:
+                  type: string
+                type: array
+              content:
+                description: |-
+                  Files downloaded into the server's content before it starts, such as a mod and its
+                  maps. Browser clients download the server's content from it.
+                items:
+                  description: 'Where some of the server''s content comes from: a file to download, or a content image.'
+                  properties:
+                    dir:
+                      description: |-
+                        Directory the files go in, e.g. "cpma". A pk3 goes in game.fsGame, or baseq3, by
+                        default. An archive or image goes at the top, where each game has its directory, and
+                        an archive's files outside a directory are skipped.
+                      nullable: true
+                      pattern: ^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$
+                      type: string
+                    image:
+                      description: |-
+                        An OCI image whose top-level directories are game directories, e.g. q3ut4/. It's
+                        mounted in the pod and its files linked into the content, so nothing is downloaded
+                        when the node already has the image.
+                      nullable: true
+                      type: string
+                    sha256:
+                      description: SHA-256 checksum of the download in hex. The server doesn't start if it doesn't match.
+                      nullable: true
+                      pattern: ^[0-9a-fA-F]{64}$
+                      type: string
+                    stripComponents:
+                      description: |-
+                        Leading directories removed from the paths in an archive, like tar's
+                        --strip-components.
+                      format: uint32
+                      minimum: 0.0
+                      nullable: true
+                      type: integer
+                    url:
+                      description: A pk3, or a zip archive of game directories, e.g. a mod's release.
+                      nullable: true
+                      type: string
+                  type: object
+                  x-kubernetes-validations:
+                  - message: set one of url and image
+                    rule: has(self.url) != has(self.image)
+                type: array
+              cvars:
+                additionalProperties:
+                  type: string
+                description: Cvars set before the first map loads, e.g. a mod's settings like CPMA's mode_start.
+                type: object
+              fragLimit:
+                description: Frag limit for maps that don't set their own.
+                format: int32
+                nullable: true
+                type: integer
+              game:
+                nullable: true
+                properties:
+                  forceRespawn:
+                    nullable: true
+                    type: boolean
+                  fsGame:
+                    description: Mod the server runs (fs_game), e.g. "cpma" or "q3ut4". Its files come from content.
+                    nullable: true
+                    pattern: ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$
+                    type: string
+                  inactivity:
+                    description: Idle players are kicked after this long, e.g. "10m".
+                    nullable: true
+                    type: string
+                  motd:
+                    description: Message of the day shown to players when they join.
+                    nullable: true
+                    type: string
+                  password:
+                    description: Password players need to join.
+                    nullable: true
+                    type: string
+                  quadFactor:
+                    format: int32
+                    nullable: true
+                    type: integer
+                  singlePlayerSkill:
+                    format: int32
+                    nullable: true
+                    type: integer
+                  type:
+                    description: Game type of maps that don't set their own.
+                    nullable: true
+                    pattern: ^(FreeForAll|Tournament|SinglePlayer|TeamDeathmatch|CaptureTheFlag)$
+                    x-kubernetes-int-or-string: true
+                  weaponRespawn:
+                    description: Weapon respawn time in seconds.
+                    format: int32
+                    nullable: true
+                    type: integer
+                type: object
+              maps:
+                description: Map rotation, played in order.
+                items:
+                  properties:
+                    captureLimit:
+                      format: int32
+                      nullable: true
+                      type: integer
+                    fragLimit:
+                      format: int32
+                      nullable: true
+                      type: integer
+                    name:
+                      pattern: ^[A-Za-z0-9_.+-]+$
+                      type: string
+                    timeLimit:
+                      description: e.g. "10m"
+                      nullable: true
+                      type: string
+                    type:
+                      description: Defaults to game.type.
+                      nullable: true
+                      pattern: ^(FreeForAll|Tournament|SinglePlayer|TeamDeathmatch|CaptureTheFlag)$
+                      x-kubernetes-int-or-string: true
+                  required:
+                  - name
+                  type: object
+                type: array
+              server:
+                nullable: true
+                properties:
+                  allowDownload:
+                    nullable: true
+                    type: boolean
+                  downloadURL:
+                    nullable: true
+                    type: string
+                  hostname:
+                    description: Name shown in server browsers. Defaults to the QuakeServer name.
+                    nullable: true
+                    type: string
+                  maxClients:
+                    format: int32
+                    nullable: true
+                    type: integer
+                type: object
+              timeLimit:
+                description: Time limit for maps that don't set their own, e.g. "15m".
+                nullable: true
+                type: string
+            type: object
+          status:
+            nullable: true
+            properties:
+              address:
+                description: Address native clients connect to, as host:port.
+                nullable: true
+                type: string
+              observedGeneration:
+                format: int64
+                nullable: true
+                type: integer
+              port:
+                description: External port allocated from the controller's port range.
+                format: int32
+                nullable: true
+                type: integer
+              ready:
+                default: false
+                description: |-
+                  Whether the server is running. Browser clients can join it then, while native clients
+                  need address, which can take longer, e.g. for a load balancer.
+                type: boolean
+            type: object
+        required:
+        - spec
+        title: QuakeServer
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

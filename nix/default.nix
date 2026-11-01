@@ -1,0 +1,95 @@
+# Everything the flake builds, for one build platform. The flake calls this with
+# its inputs, and so does dev.nix, which builds from the working tree.
+{
+  nixpkgs,
+  gomod2nix,
+  crane,
+  flocken,
+  system,
+}:
+
+let
+  overlays = [ gomod2nix.overlays.default ];
+  pkgs = import nixpkgs {
+    inherit system overlays;
+
+    # needed for terraform
+    config.allowUnfree = true;
+  };
+  inherit (pkgs) lib;
+
+  # Images are cross compiled from this platform for each platform they run on.
+  platforms = {
+    x86_64 = "x86_64-linux";
+    aarch64 = "aarch64-linux";
+  };
+  pkgsFor =
+    target:
+    if target == system then
+      pkgs
+    else
+      import nixpkgs {
+        localSystem = system;
+        crossSystem = target;
+        inherit overlays;
+      };
+
+  ioquake3 = pkgs.callPackage ./ioquake3.nix { };
+  # The same on every platform.
+  webClient = pkgs.callPackage ioquake3.webClient { };
+  content = {
+    urban-terror = pkgs.callPackage ../content/urban-terror { };
+    cpma = pkgs.callPackage ../content/cpma { };
+  };
+
+  packagesFor = target: rec {
+    pkgs = pkgsFor target;
+    q3 = pkgs.callPackage ./q3.nix { };
+    ioq3ded = pkgs.callPackage ioquake3.server { };
+    controller = pkgs.callPackage ./controller.nix { craneLib = crane.mkLib pkgs; };
+    images = import ./images.nix {
+      inherit pkgs q3 ioq3ded controller webClient content;
+    };
+  };
+  native = packagesFor system;
+  images = lib.mapAttrs (_: target: (packagesFor target).images) platforms;
+
+  # Pushes an image for every platform to ghcr.io as a multi-arch image, e.g.
+  #   GITHUB_TOKEN=... nix run --impure .#manifests.server
+  # It's tagged with the version and, on the default branch, latest.
+  manifest =
+    image: repo: version:
+    flocken.legacyPackages.${system}.mkDockerManifest {
+      github = {
+        enable = true;
+        repo = "chrisrx/quake-kube";
+        token = builtins.getEnv "GITHUB_TOKEN";
+      };
+      registries."ghcr.io".repo = repo;
+      inherit version;
+      images = lib.mapAttrsToList (_: platformImages: platformImages.${image}) images;
+    };
+in
+{
+  inherit pkgs images;
+
+  packages = {
+    default = native.q3;
+    inherit (native) q3 ioq3ded controller;
+    web-client = webClient;
+    # Images for this platform, e.g. for Tilt.
+    server-image = native.images.server;
+    controller-image = native.images.controller;
+    urban-terror-image = native.images.urban-terror;
+    cpma-image = native.images.cpma;
+  };
+
+  manifests = {
+    # Release versions come from the VERSION environment variable, e.g. a git tag.
+    server = manifest "server" "chrisrx/quake-kube-server" (builtins.getEnv "VERSION");
+    controller = manifest "controller" "chrisrx/quake-kube-controller" (builtins.getEnv "VERSION");
+    # Content images are tagged with their mod's version.
+    urban-terror = manifest "urban-terror" "chrisrx/quake-kube-urban-terror" content.urban-terror.version;
+    cpma = manifest "cpma" "chrisrx/quake-kube-cpma" content.cpma.version;
+  };
+}

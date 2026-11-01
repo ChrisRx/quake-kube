@@ -7,3 +7,8 @@ title = "The QuakeKube Book"
 [output.html]
 git-repository-url = "https://github.com/ChrisRx/quake-kube/tree/main"
 edit-url-template = "https://github.com/ChrisRx/quake-kube/edit/main/{path}"
+# The web app's look (see theme/quake-kube.css). It's dark, so the book is
+# dark whatever the system prefers.
+default-theme = "coal"
+preferred-dark-theme = "coal"
+additional-css = ["theme/quake-kube.css"]

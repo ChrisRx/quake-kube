@@ -1,0 +1,28 @@
+{{- $fullname := include "chart.fullname" . -}}
+{{- $ns := .Release.Namespace -}}
+Open the web app to create servers and play in the browser:
+{{- if .Values.gateway.ingress.enabled }}
+
+  http{{ if .Values.gateway.ingress.tls }}s{{ end }}://{{ .Values.gateway.ingress.host }}
+{{- else if eq .Values.gateway.service.type "LoadBalancer" }}
+
+  kubectl --namespace {{ $ns }} get service {{ $fullname }}-gateway
+
+  and open http://<EXTERNAL-IP>{{ if ne (int .Values.gateway.service.port) 80 }}:{{ .Values.gateway.service.port }}{{ end }}
+{{- else }}
+
+  kubectl --namespace {{ $ns }} port-forward service/{{ $fullname }}-gateway 8080:{{ .Values.gateway.service.port }}
+
+  and open http://localhost:8080
+{{- end }}
+
+Native Quake 3 clients can join a server at the address in
+
+  kubectl get quakeservers --all-namespaces
+
+once it has one, or find the servers through the master server at
+
+  kubectl --namespace {{ $ns }} get service {{ $fullname }}-master
+
+The game servers use the Quake 3 demo's files, which are covered by the Quake 3
+demo EULA: https://github.com/ChrisRx/quake-kube/blob/main/internal/quake/server/EULA.txt

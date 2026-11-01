@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{NAME}} · Quake Kube</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230f0e0c'/%3E%3Cpath d='M4 13 12 3' stroke='%23e0562b' stroke-width='3'/%3E%3C/svg%3E">
+    <style>
+      [hidden] {
+        display: none !important;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #0f0e0c;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      #join {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font: 15px/1.4 system-ui, sans-serif;
+        color: #e8e2d9;
+      }
+      #join form {
+        display: grid;
+        gap: 12px;
+        width: min(340px, calc(100vw - 32px));
+        padding: 24px;
+        background: rgba(12, 11, 10, 0.92);
+        border: 1px solid #3a332c;
+      }
+      #join h1 {
+        margin: 0 0 4px;
+        font: 600 13px/1 ui-monospace, monospace;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #e0562b;
+      }
+      #join input:not([type="checkbox"]) {
+        padding: 10px 12px;
+        font: inherit;
+        color: inherit;
+        background: #1b1916;
+        border: 1px solid #3a332c;
+      }
+      #join input:focus {
+        outline: 2px solid #e0562b;
+        outline-offset: -1px;
+      }
+      #join label {
+        display: flex;
+        gap: 8px;
+        align-items: start;
+        font-size: 13px;
+        color: #a39a8f;
+      }
+      #join button {
+        padding: 10px;
+        font: 600 14px/1 system-ui, sans-serif;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #fff;
+        background: #c2421c;
+        border: 0;
+        cursor: pointer;
+      }
+      #join button:hover {
+        background: #e0562b;
+      }
+      #join button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #join a {
+        color: #a39a8f;
+        font-size: 13px;
+        text-align: center;
+      }
+      #status {
+        margin: 0;
+        font: 13px ui-monospace, monospace;
+        color: #e8e2d9;
+      }
+      #status:empty {
+        display: none;
+      }
+    </style>
+    <script>
+      const server = {
+        namespace: "{{NAMESPACE}}",
+        name: "{{NAME}}",
+        needsPassword: {{NEEDS_PASSWORD}},
+      };
+      const base = `/play/${server.namespace}/${server.name}`;
+      const clientVersion = "{{CLIENT_VERSION}}";
+
+      // Where the gateway accepts WebTransport sessions, or null when it doesn't.
+      const webTransport = {{WEBTRANSPORT}};
+    </script>
+    <script src="/static/gamesocket.js"></script>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <div id="join">
+      <form>
+        <h1>{{NAME}}</h1>
+        <input id="player-name" placeholder="Player name" autocomplete="nickname" maxlength="32">
+        <input id="password" type="password" placeholder="Server password" hidden>
+        <label id="eula-row">
+          <input id="eula" type="checkbox">
+          <span>I agree to the <a href="/static/eula.txt" target="_blank">Quake 3 demo license</a>, which covers the game files this downloads.</span>
+        </label>
+        <button type="submit">Join</button>
+        <p id="status"></p>
+        <a href="/">Back to servers</a>
+      </form>
+    </div>
+
+    <script type="module">
+      const form = document.querySelector("#join form");
+      const nameInput = document.getElementById("player-name");
+      const passwordInput = document.getElementById("password");
+      const eulaInput = document.getElementById("eula");
+      const statusText = document.getElementById("status");
+      const setStatus = (text) => (statusText.textContent = text);
+
+      function stored(key) {
+        try {
+          return localStorage.getItem(key);
+        } catch {
+          return null;
+        }
+      }
+      function store(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch {}
+      }
+
+      nameInput.value = stored("playerName") || "";
+      passwordInput.hidden = !server.needsPassword;
+      document.getElementById("eula-row").hidden = stored("demoEulaAccepted") === "yes";
+
+      // Pak names in the manifest come with checksums, so a cached copy never goes stale and
+      // can be shared by every server using the same file. The cache needs HTTPS.
+      async function loadAsset(asset) {
+        const key = `/cache/${asset.checksum}/${asset.name}`;
+        const cache = window.caches ? await caches.open("quake-kube-assets").catch(() => null) : null;
+        let response = await cache?.match(key);
+        if (!response) {
+          const name = asset.name.replace(/(.+\/|)(.+?)$/, `$1${asset.checksum}-$2`);
+          response = await fetch(`${base}/assets/${name}`);
+          if (!response.ok) {
+            throw new Error(`Downloading ${asset.name} failed (${response.status}).`);
+          }
+          await cache?.put(key, response.clone()).catch(() => {});
+        }
+        return new Uint8Array(await response.arrayBuffer());
+      }
+
+      async function loadGameFiles(gameDirs) {
+        const manifest = await (await fetch(`${base}/assets/manifest.json`)).json();
+        const assets = manifest.filter((asset) => gameDirs.includes(asset.name.split("/")[0]));
+        const total = assets.reduce((sum, asset) => sum + asset.compressed, 0);
+        let loaded = 0;
+        return Promise.all(
+          assets.map(async (asset) => {
+            const data = await loadAsset(asset);
+            loaded += asset.compressed;
+            setStatus(`Loading game files… ${Math.round((100 * loaded) / total)}%`);
+            return { path: `/${asset.name}`, data };
+          }),
+        );
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (stored("demoEulaAccepted") !== "yes" && !eulaInput.checked) {
+          setStatus("Agree to the demo license to download the game files.");
+          return;
+        }
+        store("demoEulaAccepted", "yes");
+        const playerName = nameInput.value.trim() || "UnnamedPlayer";
+        store("playerName", playerName);
+        const button = form.querySelector("button");
+        button.disabled = true;
+
+        try {
+          setStatus("Loading game files…");
+          const info = await (await fetch(`${base}/info`)).json();
+          // A server running a mod reports the mod's directory as its game.
+          const gameDirs = ["baseq3", info.game].filter(Boolean);
+          const files = await loadGameFiles(gameDirs);
+
+          setStatus("Starting…");
+          const args = [
+            "+set", "net_enabled", "1",
+            "+set", "r_mode", "-2",
+            "+set", "cl_motd", "0",
+            "+set", "com_basegame", "baseq3",
+            "+name", playerName,
+          ];
+          if (info.game) {
+            args.push("+set", "fs_game", info.game);
+          }
+          if (passwordInput.value) {
+            args.push("+set", "password", passwordInput.value);
+          }
+          // GameSocket decides where traffic goes, so any address works here except localhost,
+          // which the engine treats as a server of its own.
+          args.push("+connect", `${server.name}.${server.namespace}`);
+
+          const { default: ioquake3 } = await import(`/client/ioquake3.js?v=${clientVersion}`);
+          document.getElementById("join").remove();
+          await ioquake3({
+            canvas: document.getElementById("canvas"),
+            arguments: args,
+            locateFile: (file) => `/client/${file}?v=${clientVersion}`,
+            preRun: [
+              (module) => {
+                // Mods can have gigabytes of paks, so the files aren't copied.
+                for (const file of files.splice(0)) {
+                  module.FS.mkdirTree(file.path.replace(/\/[^/]+$/, ""));
+                  module.FS.writeFile(file.path, file.data, { canOwn: true });
+                }
+              },
+            ],
+            // The engine's console output, for troubleshooting from the browser's tools.
+            print: (text) => console.log(text),
+            printErr: (text) => console.warn(text),
+            onExit: () => (location.href = "/"),
+          });
+        } catch (error) {
+          setStatus(error.message);
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

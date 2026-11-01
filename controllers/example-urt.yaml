@@ -1,0 +1,28 @@
+# Urban Terror 4.3 (https://www.urbanterror.info), a standalone game on the Quake 3 engine.
+# Its files are 1.4 GB, which browser clients download too. They come from a content image
+# built from content/urban-terror, so they're only downloaded when the image is built.
+apiVersion: quake.kube/v1
+kind: QuakeServer
+metadata:
+  name: urban-terror
+spec:
+  timeLimit: 20m
+  game:
+    fsGame: q3ut4
+    # Urban Terror numbers its own game types: 3 is Team Deathmatch, 7 Capture The Flag.
+    type: 7
+  server:
+    hostname: urban-terror
+    maxClients: 16
+  content:
+    - image: ghcr.io/chrisrx/quake-kube-urban-terror:4.3.4
+    # Downloading the release when the server starts works too. Its files are under
+    # UrbanTerror43/, with the game's in UrbanTerror43/q3ut4.
+    # - url: https://cdn.urbanterror.info/urt/43/releases/zips/UrbanTerror434_full.zip
+    #   sha256: 716669cc6c525663b791852e51ff9c94d96f382be39279dab6084dddacb5a4e7
+    #   stripComponents: 1
+  maps:
+    - name: ut4_turnpike
+    - name: ut4_casa
+      type: 3
+    - name: ut4_abbey

@@ -1,0 +1,112 @@
+version: "3"
+
+vars:
+  BIN_DIR: bin
+
+tasks:
+  default:
+    desc: List the tasks
+    silent: true
+    cmds:
+      - task --list
+
+  # Build
+
+  build:
+    desc: Build the q3 binary
+    env:
+      CGO_ENABLED: "0"
+    cmds:
+      - go build -trimpath -ldflags '-s -w' -o {{.BIN_DIR}}/q3 ./cmd/q3
+
+  docs:
+    desc: Build the mdBook docs
+    cmds:
+      - mdbook build docs
+
+  chart:package:
+    desc: Package the Helm chart for a release, e.g. task chart:package VERSION=1.2.0
+    requires:
+      vars: [VERSION]
+    cmds:
+      # The images the chart deploys are tagged with the same version.
+      - helm package chart --version {{.VERSION}} --app-version {{.VERSION}} --destination dist
+
+  chart:push:
+    desc: Push the Helm chart for a release, e.g. task chart:push VERSION=1.2.0
+    requires:
+      vars: [VERSION]
+    vars:
+      # The chart lands at <registry>/quake-kube.
+      REGISTRY: '{{.REGISTRY | default "oci://ghcr.io/chrisrx"}}'
+    cmds:
+      - task: chart:package
+        vars: { VERSION: "{{.VERSION}}" }
+      - helm push {{.CLI_ARGS}} dist/quake-kube-{{.VERSION}}.tgz {{.REGISTRY}}
+
+  crds:
+    desc: Generate the chart's CRDs from the controller's types
+    dir: controllers
+    cmds:
+      - cargo run --quiet -- crdgen ../chart/files/crds
+
+  # Development
+
+  cluster:
+    desc: Create the local k3d cluster with MetalLB and cert-manager
+    cmds:
+      - hack/dev.sh up
+
+  cluster-delete:
+    desc: Delete the local k3d cluster
+    cmds:
+      - hack/dev.sh down
+
+  dev:
+    desc: Run the tilt dev environment, creating the cluster if needed
+    deps: [cluster]
+    cmds:
+      - hack/dev.sh tilt
+
+  # Checks
+
+  test:
+    desc: Run the Go and Rust tests
+    deps: [test:go, test:rust]
+
+  test:go:
+    desc: Run the Go tests
+    cmds:
+      - go test -v ./internal/...
+
+  test:rust:
+    desc: Run the Rust tests
+    dir: controllers
+    cmds:
+      - cargo test
+
+  lint:
+    desc: Run the Go, Rust and Helm linters
+    deps: [lint:go, lint:rust, lint:chart]
+
+  lint:go:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run
+
+  lint:rust:
+    desc: Run clippy and check formatting
+    dir: controllers
+    cmds:
+      - cargo clippy --all-targets
+      - cargo fmt --check
+
+  lint:chart:
+    desc: Lint the Helm chart
+    cmds:
+      - helm lint chart
+
+  clean:
+    desc: Clean up build outputs
+    cmds:
+      - rm -f {{.BIN_DIR}}/* result

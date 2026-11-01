@@ -8,110 +8,74 @@
   inputs.gomod2nix.inputs.flake-utils.follows = "flake-utils";
   inputs.flocken.url = "github:mirkolenz/flocken/v2";
   inputs.flocken.inputs.nixpkgs.follows = "nixpkgs";
+  inputs.crane.url = "github:ipetkov/crane";
 
-  outputs = { self, nixpkgs, flake-utils, gomod2nix, flocken }:
-    (flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      gomod2nix,
+      flocken,
+      crane,
+    }:
+    (flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (
+      system:
       let
-
+        quakeKube = import ./nix {
+          inherit
+            nixpkgs
+            gomod2nix
+            crane
+            flocken
+            system
+            ;
+        };
+        # Separate from the packages', so the dev shell works without evaluating them.
         pkgs = import nixpkgs {
           inherit system;
-
-          # needed for terraform 
-          config.allowUnfree = true;
-
           overlays = [ gomod2nix.overlays.default ];
+          # needed for terraform
+          config.allowUnfree = true;
         };
+      in
+      {
+        # Named here so that listing them, which nix does to resolve any installable,
+        # doesn't evaluate the packages.
+        packages = nixpkgs.lib.genAttrs [
+          "default"
+          "q3"
+          "ioq3ded"
+          "controller"
+          "web-client"
+          "server-image"
+          "controller-image"
+          "urban-terror-image"
+          "cpma-image"
+        ] (name: quakeKube.packages.${name});
 
-        # Pinning specific packages.
-        oldPkgs = import (builtins.fetchTarball {
-          url =
-            "https://github.com/NixOS/nixpkgs/archive/9957cd48326fe8dbd52fdc50dd2502307f188b0d.tar.gz";
-          sha256 =
-            "sha256:1l2hq1n1jl2l64fdcpq3jrfphaz10sd1cpsax3xdya0xgsncgcsi";
-        }) { inherit system; };
-
-        # The current default sdk for macOS fails to compile go projects, so we use a newer one for now.
-        # This has no effect on other platforms.
-        callPackage =
-          pkgs.darwin.apple_sdk_11_0.callPackage or pkgs.callPackage;
-      in rec {
-        packages.grpc_health_probe = pkgs.buildGoModule rec {
-          pname = "grpc-health-probe";
-          version = "0.4.24";
-
-          src = pkgs.fetchFromGitHub {
-            owner = "grpc-ecosystem";
-            repo = "grpc-health-probe";
-            rev = "v${version}";
-            sha256 = "sha256-OZ6vfRYO75kaDVrs/HTZCAPuJyoXOk/p4t85JrLrPwQ=";
-          };
-
-          ldflags = [ "-s" "-w" "-X main.versionTag=v${version}" ];
-
-          vendorHash = "sha256-4EJBhdHIRLMHCHThwBItF8ZWVJwU+/enq0AkRcP2Wk4=";
-
-          nativeCheckInputs = with pkgs; [ ];
-
-          checkPhase = "";
-
-          meta = with pkgs.lib; {
-            description =
-              "A command-line tool to perform health-checks for gRPC applications in Kubernetes and elsewhere";
-            homepage = "https://github.com/grpc-ecosystem/grpc-health-probe";
-            license = licenses.asl20;
-            mainProgram = "grpc-health-probe";
-          };
+        legacyPackages = {
+          # Images for each platform, e.g. images.aarch64.server, and their multi-arch
+          # manifests for publishing.
+          inherit (quakeKube) images manifests;
         };
-        packages.default = pkgs.buildEnv {
-          name = "quake-kube";
-          paths = with pkgs; [
-            packages.q3
-            packages.grpc_health_probe
-            ioquake3
-          ];
-        };
-        packages.q3 = pkgs.buildGoApplication {
-          pname = "q3";
-          version = "0.1";
-          subPackages = [ "./cmd/q3" ];
-          src = ./.;
-          modules = ./gomod2nix.toml;
-        };
-        packages.container = pkgs.dockerTools.buildLayeredImage {
-          name = "quake-kube";
-          tag = "latest";
-          created = "now";
-          contents =
-            [ packages.default packages.grpc_health_probe pkgs.ioquake3 ];
-          config.Cmd = [ "${packages.default}/bin/q3" ];
-        };
-        legacyPackages.dockerManifest =
-          flocken.legacyPackages.${system}.mkDockerManifest {
-            github = {
-              enable = true;
-              actor = "chrisrx";
-              repo = "chrisrx/quake-kube";
-              token = builtins.getEnv "GITHUB_TOKEN";
-            };
-            version = builtins.getEnv "VERSION";
-            images = with self.packages; [
-              x86_64-linux.container
-              aarch64-linux.container
-            ];
-          };
 
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             pkgs.gomod2nix
-            go_1_25
+            go_1_27
             gopls
             gotools
             go-tools
-            protobuf
-            oldPkgs.protoc-gen-go # v1.31.0
-            oldPkgs.protoc-gen-go-grpc # v1.3.0
             mdbook
+            go-task
+            golangci-lint
+            cargo
+            rustc
+            clippy
+            rustfmt
             kubernetes-helm
+            k3d
             kind
             kubectl
             tilt
@@ -119,8 +83,9 @@
             terraform
             ioquake3
             skopeo
-            packages.grpc_health_probe
+            gh
           ];
         };
-      }));
+      }
+    ));
 }

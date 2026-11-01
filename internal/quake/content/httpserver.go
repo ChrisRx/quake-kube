@@ -11,51 +11,54 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	contentutil "github.com/ChrisRx/quake-kube/internal/quake/content/util"
+	quakenet "github.com/ChrisRx/quake-kube/internal/quake/net"
 )
 
 type HTTPServer struct {
 	*echo.Echo
 
-	ctx       context.Context
-	assetsDir string
+	ctx context.Context
 }
 
-func NewHTTPContentServer(ctx context.Context, assetsDir string) *HTTPServer {
+// NewHTTPServer serves what browser clients download from a game server through the
+// gateway, the server's content and info, and the server's metrics.
+func NewHTTPServer(ctx context.Context, assetsDir, serverAddr string) *HTTPServer {
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-	e.Use(middleware.BodyLimit("1000M"))
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"*"},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
-	}))
 	e.GET("/assets/manifest.json", func(c echo.Context) error {
-		files, err := contentutil.ReadManifest(assetsDir)
+		files, err := ReadManifest(assetsDir)
 		if err != nil {
 			return err
 		}
 		return c.JSONPretty(http.StatusOK, files, "   ")
 	})
 	e.GET("/assets/*", func(c echo.Context) error {
-		path := filepath.Join(assetsDir, trimAssetName(c.Param("*")))
+		// Only the files in the manifest are served. The server's config, with its rcon
+		// password, is in the same directory.
+		name := filepath.Clean("/" + trimAssetName(c.Param("*")))
+		if !hasExts(name, AssetExts...) {
+			return c.String(http.StatusNotFound, "file not found")
+		}
+		path := filepath.Join(assetsDir, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			return c.String(http.StatusNotFound, "file not found")
 		}
 		return c.File(path)
 	})
-	e.GET("/maps", func(c echo.Context) error {
-		maps, err := contentutil.ReadMaps(assetsDir)
+	e.GET("/info", func(c echo.Context) error {
+		m, err := quakenet.GetInfo(serverAddr)
 		if err != nil {
 			return err
 		}
-		return c.JSONPretty(http.StatusOK, maps, "    ")
+		return c.JSON(http.StatusOK, m)
 	})
+	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 	return &HTTPServer{
-		Echo:      e,
-		ctx:       ctx,
-		assetsDir: assetsDir,
+		Echo: e,
+		ctx:  ctx,
 	}
 }
 
@@ -90,4 +93,31 @@ func trimAssetName(s string) string {
 	d, f := filepath.Split(s)
 	f = f[strings.Index(f, "-")+1:]
 	return filepath.Join(d, f)
+}
+
+func walkFiles(root string, walkFn filepath.WalkFunc, exts ...string) error {
+	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			if os.IsPermission(err) {
+				return nil
+			}
+			return err
+		}
+		if !hasExts(path, exts...) {
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		return walkFn(path, info, err)
+	})
+}
+
+func hasExts(path string, exts ...string) bool {
+	for _, ext := range exts {
+		if strings.HasSuffix(path, ext) {
+			return true
+		}
+	}
+	return false
 }

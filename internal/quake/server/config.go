@@ -2,15 +2,21 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"reflect"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
+
+	"github.com/ChrisRx/quake-kube/internal/quake/content"
 )
 
 func ReadConfigFromFile(path string) (*Config, error) {
@@ -34,6 +40,10 @@ type Config struct {
 	FileServerConfig `json:"fs"`
 	ServerConfig     `json:"server"`
 	Commands         []string `json:"commands"`
+	// Cvars are set before the first map loads, e.g. a mod's settings.
+	Cvars map[string]string `json:"cvars"`
+	// Content is downloaded by q3 fetch before the server starts.
+	Content []content.Source `json:"content"`
 
 	Maps
 }
@@ -80,6 +90,24 @@ func (gt GameType) String() string {
 	default:
 		return "Unknown"
 	}
+}
+
+// UnmarshalJSON accepts a game type's name, or its number for mods with game types of
+// their own.
+func (gt *GameType) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] != '"' {
+		var n int
+		if err := json.Unmarshal(data, &n); err != nil {
+			return err
+		}
+		*gt = GameType(n)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	return gt.UnmarshalText([]byte(s))
 }
 
 func (gt *GameType) UnmarshalText(data []byte) error {
@@ -144,12 +172,23 @@ func writeStruct(v reflect.Value) ([]byte, error) {
 				return nil, err
 			}
 			b.Write(data)
+		case reflect.Map:
+			cvars := fv.Interface().(map[string]string)
+			for _, name := range slices.Sorted(maps.Keys(cvars)) {
+				if !cvarName.MatchString(name) {
+					return nil, fmt.Errorf("invalid cvar name %q", name)
+				}
+				fmt.Fprintf(&b, "seta %s %s\n", name, quote(cvars[name]))
+			}
 		case reflect.Slice:
 			switch val := fv.Interface().(type) {
 			case Maps:
-				data, _ := val.Marshal()
+				data, err := val.Marshal()
+				if err != nil {
+					return nil, err
+				}
 				b.Write(data)
-			case []string:
+			case []string, []content.Source:
 			default:
 				panic(fmt.Errorf("received unknown type %T", val))
 			}
@@ -162,10 +201,10 @@ func writeStruct(v reflect.Value) ([]byte, error) {
 			switch tv {
 			case "sv_dlURL":
 				if s != "" {
-					b.WriteString(fmt.Sprintf("sets %s %s\n", tv, s))
+					fmt.Fprintf(&b, "sets %s %s\n", tv, s)
 				}
 			default:
-				b.WriteString(fmt.Sprintf("seta %s %s\n", tv, strconv.Quote(s)))
+				fmt.Fprintf(&b, "seta %s %s\n", tv, quote(s))
 			}
 		}
 	}
@@ -179,6 +218,19 @@ func writeStruct(v reflect.Value) ([]byte, error) {
 		}
 	}
 	return b.Bytes(), nil
+}
+
+var cvarName = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
+// quote returns s as a quoted console argument. The console has no escapes, so characters
+// that would end the argument or the command are dropped.
+func quote(s string) string {
+	return `"` + strings.Map(func(r rune) rune {
+		if r == '"' || r < ' ' {
+			return -1
+		}
+		return r
+	}, s) + `"`
 }
 
 func toString(name string, v reflect.Value) string {
@@ -250,9 +302,14 @@ type Map struct {
 
 type Maps []Map
 
+var mapName = regexp.MustCompile(`^[A-Za-z0-9_.+-]+$`)
+
 func (maps Maps) Marshal() ([]byte, error) {
 	var b bytes.Buffer
 	for i, m := range maps {
+		if !mapName.MatchString(m.Name) {
+			return nil, fmt.Errorf("invalid map name %q", m.Name)
+		}
 		cmds := []string{
 			fmt.Sprintf("g_gametype %d", m.Type),
 		}
@@ -274,7 +331,7 @@ func (maps Maps) Marshal() ([]byte, error) {
 			nextmap = fmt.Sprintf("d%d", i+1)
 		}
 		cmds = append(cmds, fmt.Sprintf("set nextmap vstr %s", nextmap))
-		b.WriteString(fmt.Sprintf("set d%d \"seta %s\"\n", i, strings.Join(cmds, " ; ")))
+		fmt.Fprintf(&b, "set d%d \"seta %s\"\n", i, strings.Join(cmds, " ; "))
 	}
 	b.WriteString("vstr d0\n")
 	return b.Bytes(), nil

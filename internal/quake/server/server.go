@@ -3,21 +3,24 @@ package server
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/hako/durafmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.chrisrx.dev/x/run"
 
-	"github.com/ChrisRx/quake-kube/internal/run"
-	"github.com/ChrisRx/quake-kube/internal/util/exec"
-	quakenet "github.com/ChrisRx/quake-kube/pkg/quake/net"
+	"github.com/ChrisRx/quake-kube/internal/quake/content"
+	quakenet "github.com/ChrisRx/quake-kube/internal/quake/net"
 )
 
 var (
@@ -49,7 +52,9 @@ type Server struct {
 	WatchInterval time.Duration
 	ShutdownDelay time.Duration
 
-	cmd *exec.Cmd
+	cmd *Cmd
+	// game is the directory of the game the server runs, where its config is written.
+	game string
 }
 
 func (s *Server) Start(ctx context.Context) error {
@@ -60,32 +65,50 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	cfg := Default()
+	if s.ConfigFile != "" {
+		if cfg, err = ReadConfigFromFile(s.ConfigFile); err != nil {
+			return err
+		}
+	}
+	// The game can't change while the server runs, so a mod is chosen here rather than in
+	// server.cfg.
+	s.game = "baseq3"
+	if cfg.Game != "" {
+		s.game = cfg.Game
+	}
+	if !content.ValidGameDir(s.game) {
+		return fmt.Errorf("invalid game directory %q", s.game)
+	}
 	args := []string{
 		"+set", "dedicated", "2",
+		// Only the master in the config is used. Mods such as Urban Terror point empty
+		// master slots at their own public masters, so the rest are set to an address
+		// nothing answers on.
 		"+set", "sv_master1", "", // master.ioquake3.org
-		"+set", "sv_master2", "", // master.quake3arena..com
-		"+set", "sv_master3", "", // localhost:27950
+		"+set", "sv_master2", "127.0.0.1",
+		"+set", "sv_master3", "127.0.0.1",
+		"+set", "sv_master4", "127.0.0.1",
+		"+set", "sv_master5", "127.0.0.1",
 		"+set", "net_ip", host,
 		"+set", "net_port", port,
 		"+set", "fs_homepath", s.Dir,
 		"+set", "com_basegame", "baseq3",
-		// This won't work with the q3demo pak files:
-		// "+set", "fs_game", "arena",
+		"+set", "fs_game", cfg.Game,
 		"+set", "com_gamename", "Quake3Arena",
 		"+exec", "server.cfg",
 	}
-	s.cmd = exec.CommandContext(context.Background(), "ioq3ded", args...)
+	s.cmd = CommandContext(context.Background(), "ioq3ded", args...)
 	s.cmd.Dir = s.Dir
 	s.cmd.Stdout = os.Stdout
 	s.cmd.Stderr = os.Stderr
 
 	if s.ConfigFile == "" {
-		cfg := Default()
 		data, err := cfg.Marshal()
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(s.Dir, "baseq3/server.cfg"), data, 0644); err != nil {
+		if err := s.writeServerConfig(data); err != nil {
 			return err
 		}
 		if err := s.cmd.Start(); err != nil {
@@ -107,47 +130,33 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}()
 
-	go func() {
-		addr := s.Addr
-		if net.ParseIP(host).IsUnspecified() {
-			addr = net.JoinHostPort("127.0.0.1", port)
+	addr := s.Addr
+	if net.ParseIP(host).IsUnspecified() {
+		addr = net.JoinHostPort("127.0.0.1", port)
+	}
+	go run.Every(ctx, func() {
+		status, err := quakenet.GetStatus(addr)
+		if err != nil {
+			log.Printf("metrics: get status failed %v", err)
+			return
 		}
-		tick := time.NewTicker(5 * time.Second)
-		defer tick.Stop()
-
-		for {
-			select {
-			case <-tick.C:
-				status, err := quakenet.GetStatus(addr)
-				if err != nil {
-					log.Printf("metrics: get status failed %v", err)
-					continue
-				}
-				activePlayers.Set(float64(len(status.Players)))
-				for _, p := range status.Players {
-					if mapname, ok := status.Configuration["mapname"]; ok {
-						scores.WithLabelValues(p.Name, mapname).Set(float64(p.Score))
-					}
-					pings.WithLabelValues(p.Name).Set(float64(p.Ping))
-				}
-			case <-ctx.Done():
-				return
+		activePlayers.Set(float64(len(status.Players)))
+		for _, p := range status.Players {
+			if mapname, ok := status.Configuration["mapname"]; ok {
+				scores.WithLabelValues(p.Name, mapname).Set(float64(p.Score))
 			}
+			pings.WithLabelValues(p.Name).Set(float64(p.Ping))
 		}
-	}()
+	}, 5*time.Second)
 
 	ch, err := s.watch(ctx)
 	if err != nil {
 		return err
 	}
 
-	defer func() {
-		if s.cmd.Process != nil {
-			if err := s.cmd.Process.Kill(); err != nil {
-				log.Printf("couldn't kill process: %v\n", err)
-			}
-		}
-	}()
+	// Usually GracefulStop has already stopped it, but Start can also return with an
+	// error, e.g. when the config doesn't reload.
+	defer s.HardStop()
 
 	for {
 		select {
@@ -165,13 +174,17 @@ func (s *Server) Start(ctx context.Context) error {
 				}
 			}()
 		case <-ctx.Done():
-			s.GracefulStop()
+			// The shutdown handler has already warned players with GracefulStop.
 			return ctx.Err()
 		}
 	}
 }
 
 func (s *Server) GracefulStop() {
+	// The server is gone when this returns, however it returns, since the shutdown
+	// context is only canceled after it does.
+	defer s.HardStop()
+
 	if s.ShutdownDelay == 0 {
 		return
 	}
@@ -192,13 +205,14 @@ func (s *Server) GracefulStop() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	countdown := int(s.ShutdownDelay.Seconds()) - 1
+	// Counts down each second until the delay is up, then says goodbye and kicks everyone.
+	countdown := int(s.ShutdownDelay.Seconds())
 	for {
 		select {
 		case <-ticker.C:
 			countdown--
-			if countdown == 0 {
-				return
+			if countdown <= 0 {
+				continue
 			}
 			if _, err := quakenet.SendServerCommand(s.Addr, cfg.ServerConfig.Password, fmt.Sprintf("say %d\n", countdown)); err != nil {
 				log.Printf("countdown: %v\n", err)
@@ -223,12 +237,26 @@ func (s *Server) GracefulStop() {
 	}
 }
 
+// HardStop kills the server's process and waits briefly for it to exit, so it isn't left
+// running when the caller exits right after.
 func (s *Server) HardStop() {
-	if s.cmd.Process != nil {
-		if err := s.cmd.Process.Kill(); err != nil {
+	if s.cmd == nil || s.cmd.Process == nil {
+		return
+	}
+	if err := s.cmd.Process.Kill(); err != nil {
+		if !errors.Is(err, os.ErrProcessDone) {
 			log.Printf("couldn't kill process: %v\n", err)
 		}
+		return
 	}
+	// Signal 0 only checks the process exists, which stops being true once it's reaped.
+	for range 20 {
+		if err := s.cmd.Process.Signal(syscall.Signal(0)); err != nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	log.Printf("process %d still running after being killed\n", s.cmd.Process.Pid)
 }
 
 func (s *Server) reload() error {
@@ -240,7 +268,16 @@ func (s *Server) reload() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(s.Dir, "baseq3/server.cfg"), data, 0644)
+	return s.writeServerConfig(data)
+}
+
+// writeServerConfig writes server.cfg in the game's directory, which is searched first.
+func (s *Server) writeServerConfig(data []byte) error {
+	dir := filepath.Join(s.Dir, s.game)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "server.cfg"), data, 0644)
 }
 
 func (s *Server) watch(ctx context.Context) (<-chan struct{}, error) {
@@ -254,13 +291,42 @@ func (s *Server) watch(ctx context.Context) (<-chan struct{}, error) {
 
 	ch := make(chan struct{})
 
-	go run.Until(func() {
+	go run.Every(ctx, func() {
 		if fi, err := os.Stat(s.ConfigFile); err == nil {
 			if fi.ModTime().After(cur.ModTime()) {
 				ch <- struct{}{}
 			}
 			cur = fi
 		}
-	}, ctx.Done(), s.WatchInterval)
+	}, s.WatchInterval)
 	return ch, nil
+}
+
+type Cmd struct {
+	*exec.Cmd
+}
+
+func (cmd *Cmd) Restart(ctx context.Context) error {
+	if cmd.Process != nil {
+		if err := cmd.Process.Kill(); err != nil {
+			return err
+		}
+	}
+	newCmd := exec.CommandContext(ctx, cmd.Args[0], cmd.Args[1:]...)
+	newCmd.SysProcAttr = cmd.SysProcAttr
+	newCmd.Dir = cmd.Dir
+	newCmd.Env = cmd.Env
+	newCmd.Stdin = cmd.Stdin
+	newCmd.Stdout = cmd.Stdout
+	newCmd.Stderr = cmd.Stderr
+	cmd.Cmd = newCmd
+	return cmd.Start()
+}
+
+func CommandContext(ctx context.Context, name string, args ...string) *Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+	return &Cmd{Cmd: cmd}
 }

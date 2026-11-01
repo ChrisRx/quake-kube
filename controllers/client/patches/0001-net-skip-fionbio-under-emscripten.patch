@@ -1,0 +1,26 @@
+Skip making sockets non-blocking under Emscripten.
+
+Emscripten sockets never block and fail FIONBIO with EINVAL, which made
+every NET_IPSocket call fail and left the web client without networking.
+
+diff --git a/code/qcommon/net_ip.c b/code/qcommon/net_ip.c
+index 294e4c0..c18d543 100644
+--- a/code/qcommon/net_ip.c
++++ b/code/qcommon/net_ip.c
+@@ -837,13 +837,16 @@ SOCKET NET_IPSocket( char *net_interface, int port, int *err ) {
+ 		Com_Printf( "WARNING: NET_IPSocket: socket: %s\n", NET_ErrorString() );
+ 		return newsocket;
+ 	}
++#ifndef __EMSCRIPTEN__
+ 	// make it non-blocking
++	// (Emscripten's sockets never block and don't support FIONBIO.)
+ 	if( ioctlsocket( newsocket, FIONBIO, &_true ) == SOCKET_ERROR ) {
+ 		Com_Printf( "WARNING: NET_IPSocket: ioctl FIONBIO: %s\n", NET_ErrorString() );
+ 		*err = socketError;
+ 		closesocket(newsocket);
+ 		return INVALID_SOCKET;
+ 	}
++#endif
+ 
+ 	// make it broadcast capable
+ 	if( setsockopt( newsocket, SOL_SOCKET, SO_BROADCAST, (char *) &i, sizeof(i) ) == SOCKET_ERROR ) {

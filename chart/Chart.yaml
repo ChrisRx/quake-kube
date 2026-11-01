@@ -1,5 +1,5 @@
 apiVersion: v2
-name: chart
+name: quake-kube
 description: A Helm chart for Quake Kube
 
 # A chart can be either an 'application' or a 'library' chart.
@@ -12,13 +12,10 @@ description: A Helm chart for Quake Kube
 # pipeline. Library charts do not define any templates and therefore cannot be deployed.
 type: application
 
-# This is the chart version. This version number should be incremented each time you make changes
-# to the chart and its templates, including the app version.
-# Versions are expected to follow Semantic Versioning (https://semver.org/)
+# Releases publish the chart with this and appVersion set from their git tag,
+# e.g. 1.2.0 for v1.2.0 (see .github/workflows/push-image.yaml).
 version: 0.1.0
 
-# This is the version number of the application being deployed. This version number should be
-# incremented each time you make changes to the application. Versions are not expected to
-# follow Semantic Versioning. They should reflect the version the application is using.
-# It is recommended to use it with quotes.
-appVersion: "1.0.0"
+# The tag of the images the chart deploys by default. latest, the images built
+# from main, is for installing from a checkout.
+appVersion: "latest"
