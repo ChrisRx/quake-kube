@@ -40,15 +40,32 @@ let
   content = {
     urban-terror = pkgs.callPackage ../content/urban-terror { };
     cpma = pkgs.callPackage ../content/cpma { };
+    openarena = pkgs.callPackage ../content/openarena { };
+    rocket-arena = pkgs.callPackage ../content/rocket-arena { };
+    quake3-maps = pkgs.callPackage ../content/quake3-maps { };
   };
 
   packagesFor = target: rec {
     pkgs = pkgsFor target;
     q3 = pkgs.callPackage ./q3.nix { };
     ioq3ded = pkgs.callPackage ioquake3.server { };
+    # Runs mods' 32-bit x86 game code (see game.native), so only on x86-64.
+    ioq3ded-i386 =
+      if pkgs.stdenv.hostPlatform.isx86_64 then
+        pkgs.pkgsi686Linux.callPackage ioquake3.server { }
+      else
+        null;
     controller = pkgs.callPackage ./controller.nix { craneLib = crane.mkLib pkgs; };
     images = import ./images.nix {
-      inherit pkgs q3 ioq3ded controller webClient content;
+      inherit
+        pkgs
+        q3
+        ioq3ded
+        ioq3ded-i386
+        controller
+        webClient
+        content
+        ;
     };
   };
   native = packagesFor system;
@@ -97,6 +114,9 @@ in
     controller-image = native.images.controller;
     urban-terror-image = native.images.urban-terror;
     cpma-image = native.images.cpma;
+    openarena-image = native.images.openarena;
+    rocket-arena-image = native.images.rocket-arena;
+    quake3-maps-image = native.images.quake3-maps;
   };
 
   manifests = {
@@ -106,5 +126,8 @@ in
     # Content images are tagged with their mod's version.
     urban-terror = manifest "urban-terror" "chrisrx/quake-kube-urban-terror" content.urban-terror.version;
     cpma = manifest "cpma" "chrisrx/quake-kube-cpma" content.cpma.version;
+    openarena = manifest "openarena" "chrisrx/quake-kube-openarena" content.openarena.version;
+    rocket-arena = manifest "rocket-arena" "chrisrx/quake-kube-rocket-arena" content.rocket-arena.version;
+    quake3-maps = manifest "quake3-maps" "chrisrx/quake-kube-quake3-maps" content.quake3-maps.version;
   };
 }

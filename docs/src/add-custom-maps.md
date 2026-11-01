@@ -18,10 +18,34 @@ content:
   - image: ghcr.io/chrisrx/quake-kube-urban-terror:4.3.4
 ```
 
-Images for Urban Terror and CPMA are published for x86_64 and aarch64:
+These images are published for x86_64 and aarch64:
 
-- `ghcr.io/chrisrx/quake-kube-urban-terror:4.3.4`
-- `ghcr.io/chrisrx/quake-kube-cpma:1.53`
+| Image | Content | Directory |
+|---|---|---|
+| `ghcr.io/chrisrx/quake-kube-urban-terror:4.3.4` | Urban Terror 4.3.4, and the community map ut4_orbital_sl | `q3ut4` |
+| `ghcr.io/chrisrx/quake-kube-cpma:1.53` | CPMA 1.53 and its map pack | `cpma` |
+| `ghcr.io/chrisrx/quake-kube-rocket-arena:1.76` | Rocket Arena 3, and its maps for CPMA's Clan Arena | `arena`, `cpma` |
+| `ghcr.io/chrisrx/quake-kube-openarena:0.8.8` | OpenArena 0.8.8 and the OpenArena Community Mappack Vol. 1 | `baseoa` |
+| `ghcr.io/chrisrx/quake-kube-quake3-maps:1` | Community maps for Quake 3 from lvlworld | `baseq3` |
+
+### Native game code
+
+Browsers need a mod's game code as QVMs, and so do servers normally. Rocket
+Arena 3 ships QVMs for the client, but its server code is only a 32-bit x86
+library. With `game.native`, the server runs a 32-bit build of the game server
+that loads it:
+
+```yaml
+spec:
+  game:
+    fsGame: arena
+    native: true
+```
+
+Such servers only run on x86-64 nodes, which the controller selects. The
+library is closed source native code from 2004, and runs inside the server's
+pod with an executable stack, which it needs. CPMA's Clan Arena is the same game
+mode with no native code, and the Rocket Arena preset plays RA3's maps with it.
 
 They're built from `content/` by the flake. To build one yourself and push it
 to your own registry:
@@ -167,10 +191,23 @@ Some mods use files from the full game, which the demo doesn't have and which
 can't be freely distributed. Urban Terror is a standalone game, so it doesn't
 need any. CPMA's client won't start without the full game's default player
 model, mynx, so the CPMA content image builds a stand-in from OpenArena's
-"major" model (GPLv2, see `content/cpma/openarena-mynx.sh`). CPMA's maps use
-textures from the full game too. cpm4a and cpm29 have all of theirs in the demo
-or CPMA, and cpm18r, cpm19, cpm20, cpm22, cpm25, cpm27, cpm28 and cpm3a miss one
-or two. Missing textures and sounds don't stop the game, but show up as blank
+"major" model (GPLv2, see `content/cpma/openarena-mynx.sh`).
+
+Maps often use textures from the full game too. OpenArena has same-named
+replacements for many of them, so content images include a pk3 of the ones their
+maps need, built by `content/openarena-standins.sh` from a list that
+`hack/standins.py` writes:
+
+```shell
+python3 -I hack/standins.py content/cpma/standins \
+  --base <demo paks> <the mod's paks> \
+  --source <OpenArena's baseoa paks> \
+  --maps <map pk3s>
+```
+
+It reports what's still missing. The maps in the presets miss at most a few
+textures, and only Rocket Arena 3's maps that are complete, or close to it, are
+included. Missing textures and sounds don't stop the game, but show up as blank
 surfaces and silence.
 
 If you own Quake 3, adding your `pak0.pk3` to `content` with `dir: baseq3`

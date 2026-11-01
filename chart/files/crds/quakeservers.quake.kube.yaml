@@ -120,6 +120,14 @@ spec:
                     description: Message of the day shown to players when they join.
                     nullable: true
                     type: string
+                  native:
+                    description: |-
+                      Runs the mod's game code from its 32-bit x86 library rather than a QVM, for mods that
+                      only ship one, like Rocket Arena 3. ioquake3 loads it as qagamex86.so, which id's
+                      releases called qagamei386.so. The server then only runs on x86-64
+                      nodes, and runs the mod's native code in its pod.
+                    nullable: true
+                    type: boolean
                   password:
                     description: Password players need to join.
                     nullable: true

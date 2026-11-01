@@ -52,11 +52,12 @@ spec:
 
 Without `maps`, the server plays q3dm7 and q3dm17. The Quake 3 demo only has
 q3dm1, q3dm7, q3dm17 and q3tourney2. Others need content (see
-[Add Mods And Maps](add-custom-maps.md)), which is also where `game.fsGame` and
-`content` are covered.
+[Add Mods And Maps](add-custom-maps.md)), which is also where `game.fsGame`,
+`game.native` and `content` are covered.
 
-A map's `fragLimit` and `timeLimit` apply from that map on, and Capture The Flag
-maps can set a `captureLimit`:
+A map's `fragLimit`, `timeLimit` and `captureLimit` apply from that map on. Mods
+number their game types differently, so `captureLimit` is set for any type,
+such as Capture The Flag:
 
 ```yaml
 maps:

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -175,7 +176,9 @@ type readCloser struct {
 }
 
 // ProfileName is the name of the files in a game's directory saying which files the engine
-// reads, so browser clients can fetch them before starting it.
+// reads, so browser clients can fetch them before starting it. Content that adds to another's
+// directory, like a map pack for a mod, names its own with a suffix, e.g.
+// quake-kube-profile-maps.json.
 const ProfileName = "quake-kube-profile.json"
 
 // Profile lists the files the engine reads, by the pak they're in, e.g.
@@ -198,23 +201,27 @@ func ReadProfiles(dir string) (*Profile, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name(), ProfileName))
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
+		pattern := filepath.Join(dir, entry.Name(), strings.TrimSuffix(ProfileName, ".json")+"*.json")
+		paths, err := filepath.Glob(pattern)
 		if err != nil {
 			return nil, err
 		}
-		var p Profile
-		if err := json.Unmarshal(data, &p); err != nil {
-			return nil, fmt.Errorf("reading %s's profile: %w", entry.Name(), err)
-		}
-		mergeFiles(merged.Common, p.Common)
-		for m, files := range p.Maps {
-			if merged.Maps[m] == nil {
-				merged.Maps[m] = map[string][]string{}
+		for _, path := range paths {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil, err
 			}
-			mergeFiles(merged.Maps[m], files)
+			var p Profile
+			if err := json.Unmarshal(data, &p); err != nil {
+				return nil, fmt.Errorf("reading %s: %w", path, err)
+			}
+			mergeFiles(merged.Common, p.Common)
+			for m, files := range p.Maps {
+				if merged.Maps[m] == nil {
+					merged.Maps[m] = map[string][]string{}
+				}
+				mergeFiles(merged.Maps[m], files)
+			}
 		}
 	}
 	return merged, nil
