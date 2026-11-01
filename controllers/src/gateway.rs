@@ -3,7 +3,7 @@
 //! WebSocket and is relayed to the server here.
 
 use crate::auth::{Auth, AuthError, User};
-use crate::config::GatewayConfig;
+use crate::config::{ExposureType, GatewayConfig};
 use crate::prelude::*;
 use crate::quake_server::MapSpec;
 use crate::quake_server::{GAME_PORT, HTTP_PORT};
@@ -81,6 +81,8 @@ struct Gateway {
     webtransport: Option<Arc<WebTransport>>,
     web_client: Option<WebClient>,
     auth: Arc<Auth>,
+    /// Whether game servers have external addresses native clients can connect to.
+    native_clients: bool,
 }
 
 impl Gateway {
@@ -179,6 +181,7 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
     };
 
     let port = config.gateway.port;
+    let native_clients = config.game_servers.exposure.type_ != ExposureType::None;
     let gateway = Arc::new(Gateway {
         client,
         config: config.gateway,
@@ -188,6 +191,7 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
         webtransport,
         web_client,
         auth,
+        native_clients,
     });
 
     let app = Router::new()
@@ -263,6 +267,8 @@ struct AppConfig<'a> {
     /// Who's signed in, when the gateway knows.
     user: Option<String>,
     can_create: bool,
+    /// Whether native clients can connect to servers' addresses.
+    native_clients: bool,
     presets: Vec<PresetView<'a>>,
 }
 
@@ -280,6 +286,7 @@ async fn app_config(State(gateway): State<Arc<Gateway>>, Identity(user): Identit
     let config = &gateway.config;
     Json(AppConfig {
         user: user.map(|user| user.email),
+        native_clients: gateway.native_clients,
         can_create: config.max_servers > 0 && !config.presets.is_empty(),
         presets: config
             .presets
@@ -356,7 +363,13 @@ async fn list_servers(
                     .or_else(|| qs.spec.game.as_ref().and_then(|game| game.fs_game.clone())),
                 ready: status.ready,
                 address: status.address,
-                hostname: get("hostname"),
+                // Until the server answers, its spec has the name it was created with.
+                hostname: get("hostname").or_else(|| {
+                    qs.spec
+                        .server
+                        .as_ref()
+                        .and_then(|server| server.hostname.clone())
+                }),
                 map: get("mapname"),
                 game_type: number("gametype")
                     .and_then(|n| game_type_name(get("game").as_deref(), n)),
@@ -447,16 +460,9 @@ async fn create_server(
             "creating servers is turned off".to_owned(),
         ));
     }
-    // Leave room for the "-game" suffix of the Service name.
-    let valid_name = (1..=40).contains(&request.name.len())
-        && request
-            .name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        && !request.name.starts_with('-')
-        && !request.name.ends_with('-');
-    if !valid_name {
-        return bad_request("names use lowercase letters, digits and dashes, up to 40 characters");
+    let hostname = display_name(&request.name);
+    if hostname.is_empty() || hostname.chars().count() > MAX_DISPLAY_NAME {
+        return bad_request(&format!("names are 1 to {MAX_DISPLAY_NAME} characters"));
     }
     let Some(preset) = config.presets.iter().find(|p| p.name == request.preset) else {
         return bad_request("unknown game");
@@ -515,7 +521,7 @@ async fn create_server(
     }
     game.password = request.password.filter(|p| !p.is_empty());
     spec.cvars.extend(game_type.cvars.clone());
-    spec.server.get_or_insert_default().hostname = Some(request.name.clone());
+    spec.server.get_or_insert_default().hostname = Some(hostname.clone());
     spec.maps = vec![MapSpec {
         name: request.map,
         type_: None,
@@ -523,37 +529,95 @@ async fn create_server(
         frag_limit: None,
         time_limit: None,
     }];
-    let mut server = QuakeServer::new(&request.name, spec);
-    let labels = server.labels_mut();
-    labels.insert(CREATED_BY_LABEL.to_owned(), "gateway".to_owned());
-    labels.insert(PRESET_LABEL.to_owned(), preset.name.clone());
-    if let Some(user) = &user {
-        server
-            .annotations_mut()
-            .insert(OWNER_ANNOTATION.to_owned(), user.email.clone());
-    }
-    Api::<QuakeServer>::namespaced(gateway.client.clone(), &config.namespace)
-        .create(&PostParams::default(), &server)
-        .await
-        .map_err(|error| match error {
-            kube::Error::Api(status) if status.code == 409 => (
-                StatusCode::CONFLICT,
-                format!("{} already exists", request.name),
-            ),
-            error => {
+    // Servers can share a display name, so the first free name, with a number if needed, is
+    // used for the resources.
+    let api = Api::<QuakeServer>::namespaced(gateway.client.clone(), &config.namespace);
+    let base = resource_name(&hostname);
+    for n in 1..=20 {
+        let name = numbered_name(&base, n);
+        let mut server = QuakeServer::new(&name, spec.clone());
+        let labels = server.labels_mut();
+        labels.insert(CREATED_BY_LABEL.to_owned(), "gateway".to_owned());
+        labels.insert(PRESET_LABEL.to_owned(), preset.name.clone());
+        if let Some(user) = &user {
+            server
+                .annotations_mut()
+                .insert(OWNER_ANNOTATION.to_owned(), user.email.clone());
+        }
+        match api.create(&PostParams::default(), &server).await {
+            Ok(_) => {
+                info!(
+                    server = %name,
+                    %hostname,
+                    user = user.as_ref().map(|user| user.email.as_str()),
+                    "created server"
+                );
+                return Ok(StatusCode::CREATED);
+            }
+            Err(kube::Error::Api(status)) if status.code == 409 => continue,
+            Err(error) => {
                 warn!("creating server failed: {error}");
-                (
+                return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "creating the server failed".to_owned(),
-                )
+                ));
             }
-        })?;
-    info!(
-        server = %request.name,
-        user = user.as_ref().map(|user| user.email.as_str()),
-        "created server"
-    );
-    Ok(StatusCode::CREATED)
+        }
+    }
+    Err((
+        StatusCode::CONFLICT,
+        format!("too many servers are called {hostname}"),
+    ))
+}
+
+/// The longest display name a server can have.
+const MAX_DISPLAY_NAME: usize = 64;
+
+/// The longest name for a server's resources, leaving room for the "-game" suffix of its
+/// Service's name.
+const MAX_RESOURCE_NAME: usize = 40;
+
+/// A server's display name, which players see as its hostname, without what the game's
+/// config and info strings can't hold.
+fn display_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| !c.is_control() && !matches!(c, '"' | '\\'))
+        .collect::<String>()
+        .trim()
+        .to_owned()
+}
+
+/// A name for a server's resources from its display name: its letters and digits, lowercase,
+/// with dashes between words, e.g. "friday-night" for "Friday Night!".
+fn resource_name(display: &str) -> String {
+    let mut name = String::new();
+    for c in display.chars().flat_map(char::to_lowercase) {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            name.push(c);
+        } else if !name.is_empty() && !name.ends_with('-') {
+            name.push('-');
+        }
+    }
+    let name = name.trim_end_matches('-');
+    if name.is_empty() {
+        "server".to_owned()
+    } else {
+        name.to_owned()
+    }
+}
+
+/// The nth name to try for a server, e.g. "friday-night", then "friday-night-2".
+fn numbered_name(base: &str, n: u32) -> String {
+    let suffix = if n == 1 {
+        String::new()
+    } else {
+        format!("-{n}")
+    };
+    let base: String = base
+        .chars()
+        .take(MAX_RESOURCE_NAME - suffix.len())
+        .collect();
+    format!("{}{suffix}", base.trim_end_matches('-'))
 }
 
 async fn delete_server(
@@ -876,6 +940,20 @@ mod tests {
         ] {
             assert!(!proxied(method, path), "{method} {path}");
         }
+    }
+
+    #[test]
+    fn names_servers() {
+        assert_eq!(display_name("  Friday \"Night\"\\ 🔥 "), "Friday Night 🔥");
+        assert_eq!(resource_name("Friday Night!"), "friday-night");
+        assert_eq!(resource_name("  --Team__Arena 2-- "), "team-arena-2");
+        assert_eq!(resource_name("🔥🔥"), "server");
+        assert_eq!(numbered_name("friday-night", 1), "friday-night");
+        assert_eq!(numbered_name("friday-night", 2), "friday-night-2");
+        let long = resource_name(&"a".repeat(60));
+        assert_eq!(numbered_name(&long, 1).len(), MAX_RESOURCE_NAME);
+        assert_eq!(numbered_name(&long, 12).len(), MAX_RESOURCE_NAME);
+        assert!(numbered_name(&long, 12).ends_with("a-12"));
     }
 
     #[test]
