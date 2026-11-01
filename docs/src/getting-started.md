@@ -29,7 +29,9 @@ kubectl --namespace quake-kube port-forward service/quake-kube-gateway 8080:80
 ```
 
 Open `http://localhost:8080`, pick a game, mode and map under **New server**,
-and create it. Once it's ready, **Play** joins it in the browser.
+and create it. Once it's ready, **Play** joins it in the browser. The games are
+the Quake 3 demo, and on Kubernetes 1.35 and later, Urban Terror and CPMA (see
+[Add Mods And Maps](add-custom-maps.md#presets)).
 
 The game servers use the files from the Quake 3 demo, which are covered by the
 [Quake 3 demo EULA](https://github.com/ChrisRx/quake-kube/blob/main/internal/quake/server/EULA.txt).
@@ -121,10 +123,14 @@ accept by its hash, so it doesn't need one from a CA. With more than one
 gateway replica, set `gateway.webtransport.tls.secretName` to a certificate
 browsers trust, since each replica would otherwise have its own.
 
-The web app has no login of its own. Anyone who can reach it can create up to
-`gateway.maxServers` servers, so put authentication in front of it, e.g. in the
-ingress, if that's a problem. Setting `gateway.maxServers` to 0 turns creating
-servers off.
+By default, anyone who can reach the web app can create up to
+`gateway.maxServers` servers, and delete the ones created there. To sign people
+in, e.g. with Google Cloud's Identity-Aware Proxy, and give servers owners, see
+[Authentication](authentication.md). Setting `gateway.maxServers` to 0 turns
+creating servers off.
+
+The chart can also route to the web app with Gateway API instead of an
+ingress, with `gateway.httpRoute`.
 
 ## Create servers with kubectl
 

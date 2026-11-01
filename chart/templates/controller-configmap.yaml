@@ -16,8 +16,37 @@ data:
       port: 8080
       namespace: {{ .Values.gateway.namespace | default .Release.Namespace | quote }}
       maxServers: {{ .Values.gateway.maxServers }}
+      {{- if not (kindIs "invalid" .Values.gateway.maxServersPerUser) }}
+      maxServersPerUser: {{ .Values.gateway.maxServersPerUser }}
+      {{- end }}
       presets:
-        {{- toYaml .Values.gateway.presets | nindent 8 }}
+        {{- include "chart.presets" . | nindent 8 }}
+      {{- with .Values.gateway.auth }}
+      auth:
+        mode: {{ .mode }}
+        {{- if eq .mode "iap" }}
+        {{- if not (or .iap.audience .iap.projectNumber) }}
+        {{- fail "gateway.auth.mode iap needs gateway.auth.iap.audience or gateway.auth.iap.projectNumber" }}
+        {{- end }}
+        iap:
+          {{- with .iap.audience }}
+          audience: {{ . | quote }}
+          {{- end }}
+          {{- with .iap.projectNumber }}
+          projectNumber: {{ . | toString | quote }}
+          {{- end }}
+        {{- end }}
+        {{- if eq .mode "header" }}
+        header:
+          user: {{ .header.user | quote }}
+          {{- with .header.groups }}
+          groups: {{ . | quote }}
+          {{- end }}
+        {{- end }}
+        {{- if .ticketSecretName }}
+        ticketKeyFile: /etc/quake-kube/ticket/key
+        {{- end }}
+      {{- end }}
       webtransport:
         enabled: {{ .Values.gateway.webtransport.enabled }}
         port: 4433

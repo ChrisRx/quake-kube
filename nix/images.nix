@@ -53,9 +53,14 @@ in
   controller = dockerTools.buildLayeredImage {
     name = "quake-kube-controller";
     tag = "latest";
-    contents = [ client ];
+    contents = [
+      client
+      # The gateway fetches IAP's signing keys over HTTPS.
+      pkgs.cacert
+    ];
     config = {
       Entrypoint = [ (lib.getExe controller) ];
+      Env = [ "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" ];
       # Numeric so that runAsNonRoot can verify it.
       User = "65532:65532";
     };

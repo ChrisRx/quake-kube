@@ -2,6 +2,7 @@ package content
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"fmt"
@@ -19,6 +20,9 @@ type File struct {
 	Name       string `json:"name"`
 	Compressed int64  `json:"compressed"`
 	Checksum   uint32 `json:"checksum"`
+	// Maps is set for a map's pak, which browser clients only need when playing one of
+	// these maps. Other files are always needed.
+	Maps []string `json:"maps,omitempty"`
 }
 
 // AssetExts are the extensions of the files in a manifest, which are the only files a
@@ -31,8 +35,13 @@ type checksumKey struct {
 	modTime time.Time
 }
 
-// checksums caches file checksums, since a mod's content can run to gigabytes.
-var checksums sync.Map
+// scanned caches what's found reading files, since a mod's content can run to gigabytes.
+var scanned sync.Map
+
+type scan struct {
+	checksum uint32
+	maps     []string
+}
 
 // ReadManifest
 func ReadManifest(dir string) (files []*File, err error) {
@@ -46,7 +55,7 @@ func ReadManifest(dir string) (files []*File, err error) {
 			}
 		}
 		key := checksumKey{path, info.Size(), info.ModTime()}
-		n, ok := checksums.Load(key)
+		v, ok := scanned.Load(key)
 		if !ok {
 			f, err := os.Open(path)
 			if err != nil {
@@ -57,13 +66,47 @@ func ReadManifest(dir string) (files []*File, err error) {
 			if _, err := io.Copy(h, f); err != nil {
 				return err
 			}
-			n, _ = checksums.LoadOrStore(key, h.Sum32())
+			var maps []string
+			if strings.HasSuffix(path, ".pk3") {
+				// A pak that can't be read is left to the engine to complain about, and
+				// counts as always needed.
+				maps, _ = mapPakMaps(f, info.Size(), filepath.Base(path))
+			}
+			v, _ = scanned.LoadOrStore(key, &scan{h.Sum32(), maps})
 		}
+		s := v.(*scan)
 		path = strings.TrimPrefix(path, dir+"/")
-		files = append(files, &File{path, info.Size(), n.(uint32)})
+		files = append(files, &File{path, info.Size(), s.checksum, s.maps})
 		return nil
 	}, AssetExts...)
 	return
+}
+
+// mapPakMaps returns the maps a pak is for, when it's a map's pak: one whose name includes the
+// name of every map in it, like map_cpm22.pk3. Paks that bundle maps under other names, like
+// Urban Terror's zUrT43_004.pk3, often carry shared content too, so they're always needed.
+func mapPakMaps(r io.ReaderAt, size int64, name string) ([]string, error) {
+	zr, err := zip.NewReader(r, size)
+	if err != nil {
+		return nil, err
+	}
+	name = strings.ToLower(name)
+	var maps []string
+	for _, f := range zr.File {
+		path := strings.ToLower(f.Name)
+		if !strings.HasPrefix(path, "maps/") || !strings.HasSuffix(path, ".bsp") {
+			continue
+		}
+		m := strings.TrimSuffix(strings.TrimPrefix(path, "maps/"), ".bsp")
+		if strings.Contains(m, "/") {
+			continue
+		}
+		if !strings.Contains(name, m) {
+			return nil, nil
+		}
+		maps = append(maps, m)
+	}
+	return maps, nil
 }
 
 var gzipMagicHeader = []byte{'\x1f', '\x8b'}

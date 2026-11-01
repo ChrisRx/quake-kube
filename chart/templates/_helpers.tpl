@@ -60,3 +60,25 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+The web app's presets, without the ones with content images when the cluster
+can't mount them (gateway.imagePresets).
+*/}}
+{{- define "chart.presets" -}}
+{{- $images := .Values.gateway.imagePresets -}}
+{{- if eq (toString $images) "auto" -}}
+{{- $images = semverCompare ">=1.35-0" .Capabilities.KubeVersion.Version -}}
+{{- end -}}
+{{- $presets := list -}}
+{{- range .Values.gateway.presets -}}
+{{- $hasImages := false -}}
+{{- range (dig "spec" "content" list .) -}}
+{{- if .image }}{{ $hasImages = true }}{{ end -}}
+{{- end -}}
+{{- if or $images (not $hasImages) -}}
+{{- $presets = append $presets . -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $presets -}}
+{{- end }}

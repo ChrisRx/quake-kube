@@ -55,7 +55,10 @@ class GameSocket {
         value: new Uint8Array(hash),
       }));
     }
-    const transport = new WebTransport(`https://${host}${base}`, options);
+    // Sessions don't go through the proxy that signs people in, so they bring a ticket
+    // from the play page instead.
+    const query = webTransport.ticket ? `?ticket=${encodeURIComponent(webTransport.ticket)}` : "";
+    const transport = new WebTransport(`https://${host}${base}${query}`, options);
     const timeout = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("timed out")), 3000),
     );

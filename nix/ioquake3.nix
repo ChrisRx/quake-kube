@@ -80,16 +80,24 @@ in
         # outgrow, so it's allowed to grow.
         emcmake cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_EXE_LINKER_FLAGS="-sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2GB"
+        # A second build reads paks on demand, which needs JSPI. JSPI can't
+        # suspend through JavaScript frames, so longjmp uses WebAssembly
+        # exceptions instead of JavaScript's.
+        emcmake cmake -S . -B build-jspi -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_C_FLAGS="-DQUAKE_KUBE_JSPI -sSUPPORT_LONGJMP=wasm" \
+          -DCMAKE_EXE_LINKER_FLAGS="-sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2GB -sSUPPORT_LONGJMP=wasm -sJSPI -sJSPI_EXPORTS=main,quake_kube_frame"
         runHook postConfigure
       '';
       buildPhase = ''
         runHook preBuild
         cmake --build build --target ioquake3
+        cmake --build build-jspi --target ioquake3
         runHook postBuild
       '';
       installPhase = ''
         runHook preInstall
         install -Dm644 -t $out build/Release/ioquake3.js build/Release/ioquake3.wasm
+        install -Dm644 -t $out/jspi build-jspi/Release/ioquake3.js build-jspi/Release/ioquake3.wasm
         runHook postInstall
       '';
     };

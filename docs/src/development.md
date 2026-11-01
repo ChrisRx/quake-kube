@@ -83,11 +83,26 @@ warnings, write the CA certificate with `hack/dev.sh ca` and import it into
 your browser as a trusted authority. The CA is new each time the cluster is
 created.
 
-The dev cluster's presets, in `hack/k3d/presets.yaml`, include Urban Terror
-and CPMA. Tilt builds their content images and pushes them to the cluster's
-registry. The first build downloads the mods, 1.4 GB for Urban Terror, which
+The dev cluster's presets, in `hack/k3d/presets.yaml`, are the chart's with
+content images from the working tree. Tilt builds them and pushes them to the
+cluster's registry. The first build downloads the mods, 1.4 GB for Urban Terror, which
 nix keeps for later builds. Servers running mods are also in `controllers/example-cpma.yaml` and
 `controllers/example-urt.yaml`.
+
+## Profiles
+
+Content images' profiles say which files the browser client reads on each map
+(see [Add Mods And Maps](add-custom-maps.md#profiles)). Regenerate one after
+changing a mod's content or its preset's maps, with the dev cluster running:
+
+```shell
+task content:profile PRESET=urban-terror CONTENT=urban-terror
+```
+
+This starts a server for each of the preset's maps in `hack/k3d/presets.yaml`,
+joins it in headless Chromium with the engine logging the files it opens, and
+writes `content/<mod>/profile.json`, which the content image includes. Files
+read on at least half the maps are fetched for every map.
 
 ## Tasks
 
