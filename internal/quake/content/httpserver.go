@@ -26,7 +26,7 @@ type HTTPServer struct {
 // gateway, the server's content and info, and the server's metrics.
 func NewHTTPServer(ctx context.Context, assetsDir, serverAddr string) *HTTPServer {
 	e := echo.New()
-	e.Use(middleware.Logger())
+	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
 	e.GET("/assets/manifest.json", func(c echo.Context) error {
 		files, err := ReadManifest(assetsDir)
