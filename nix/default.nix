@@ -55,17 +55,32 @@ let
   images = lib.mapAttrs (_: target: (packagesFor target).images) platforms;
 
   # Pushes an image for every platform to ghcr.io as a multi-arch image, e.g.
-  #   GITHUB_TOKEN=... nix run --impure .#manifests.server
+  #   GITHUB_ACTOR=... GITHUB_TOKEN=... nix run --impure .#manifests.server
   # It's tagged with the version and, on the default branch, latest.
+  #
+  # flocken's GitHub support is left off: it fetches the repository's details from
+  # the GitHub API without a token, which CI's shared addresses get rate limited on.
+  # Its branch still comes from GITHUB_REF_NAME.
   manifest =
     image: repo: version:
     flocken.legacyPackages.${system}.mkDockerManifest {
-      github = {
+      # Off, but flocken reads the token regardless.
+      github.token = "";
+      registries."ghcr.io" = {
         enable = true;
-        repo = "chrisrx/quake-kube";
-        token = builtins.getEnv "GITHUB_TOKEN";
+        inherit repo;
+        username = builtins.getEnv "GITHUB_ACTOR";
+        password = builtins.getEnv "GITHUB_TOKEN";
       };
-      registries."ghcr.io".repo = repo;
+      annotations.org.opencontainers.image = {
+        title = lib.last (lib.splitString "/" repo);
+        description = "Quake 3 on Kubernetes";
+        source = "https://github.com/ChrisRx/quake-kube";
+        url = "https://chrisrx.github.io/quake-kube/";
+        authors = "https://github.com/ChrisRx";
+        vendor = "ChrisRx";
+        licenses = "Apache-2.0";
+      };
       inherit version;
       images = lib.mapAttrsToList (_: platformImages: platformImages.${image}) images;
     };
