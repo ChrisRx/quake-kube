@@ -217,6 +217,11 @@
         gap: 8px;
         margin-top: 4px;
       }
+      .message {
+        grid-column: 1 / -1;
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
       .error {
         grid-column: 1 / -1;
         margin: 0;
@@ -257,7 +262,7 @@
       <dialog id="create" aria-labelledby="create-title">
         <h2 id="create-title">New server</h2>
         <form id="create-form">
-          <label>Name <input name="name" required pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" maxlength="40" placeholder="friday-night"></label>
+          <label>Name <input name="name" required maxlength="64" placeholder="Friday Night"></label>
           <label>Game <select name="preset" id="presets"></select></label>
           <label>Mode <select name="gameType" id="game-types"></select></label>
           <label>Map <select name="map" id="maps"></select></label>
@@ -271,7 +276,19 @@
         </form>
       </dialog>
 
-      <p class="hint">Native Quake 3 clients can connect to a server's address directly.</p>
+      <dialog id="delete" aria-labelledby="delete-title">
+        <h2 id="delete-title">Delete server</h2>
+        <form id="delete-form">
+          <p class="message">Delete <b id="delete-name"></b>? Anyone playing will be disconnected.</p>
+          <p class="error" id="delete-error"></p>
+          <div class="form-actions">
+            <button type="button" class="secondary" id="delete-cancel">Cancel</button>
+            <button type="submit">Delete</button>
+          </div>
+        </form>
+      </dialog>
+
+      <p class="hint" id="native-hint" hidden>Native Quake 3 clients can connect to a server's address directly.</p>
     </main>
 
     <template id="server-template">
@@ -332,12 +349,7 @@
             play.classList.toggle("disabled", !s.ready || s.map == null);
             const del = el.querySelector(".delete");
             del.hidden = !s.deletable;
-            del.addEventListener("click", async () => {
-              if (!confirm(`Delete ${s.name}? Anyone playing will be disconnected.`)) return;
-              const response = await fetch(`/api/servers/${s.namespace}/${s.name}`, { method: "DELETE" });
-              if (!response.ok) alert((await response.text()) || "Deleting the server failed.");
-              refresh();
-            });
+            del.addEventListener("click", () => confirmDelete(s));
             return el;
           }),
         );
@@ -369,6 +381,7 @@
       async function setUpCreate() {
         const config = await (await fetch("/api/config")).json();
         if (config.user) document.getElementById("user").textContent = config.user;
+        document.getElementById("native-hint").hidden = !config.nativeClients;
         if (!config.canCreate) return;
         presets = config.presets;
         const select = document.getElementById("presets");
@@ -377,6 +390,33 @@
         showPreset();
         document.getElementById("create-open").hidden = false;
       }
+
+      // Asks before deleting a server, in a dialog like the one for creating them.
+      const deleteDialog = document.getElementById("delete");
+      let deleting = null;
+      function confirmDelete(server) {
+        deleting = server;
+        document.getElementById("delete-name").textContent = server.hostname || server.name;
+        document.getElementById("delete-error").textContent = "";
+        deleteDialog.showModal();
+      }
+      document.getElementById("delete-cancel").addEventListener("click", () => deleteDialog.close());
+      deleteDialog.addEventListener("click", (event) => {
+        if (event.target === deleteDialog) deleteDialog.close();
+      });
+      document.getElementById("delete-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const response = await fetch(`/api/servers/${deleting.namespace}/${deleting.name}`, {
+          method: "DELETE",
+        });
+        if (response.ok) {
+          deleteDialog.close();
+          refresh();
+        } else {
+          document.getElementById("delete-error").textContent =
+            (await response.text()) || "Deleting the server failed.";
+        }
+      });
 
       const dialog = document.getElementById("create");
       document.getElementById("create-open").addEventListener("click", () => {
