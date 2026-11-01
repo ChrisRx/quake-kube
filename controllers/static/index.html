@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Quake Kube</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230f0e0c'/%3E%3Cpath d='M4 13 12 3' stroke='%23e0562b' stroke-width='3'/%3E%3C/svg%3E">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.5 22 7.25 12 13 2 7.25Z' fill='%23f08a62'/%3E%3Cpath d='M2 7.25 12 13v10.5L2 17.75Z' fill='%23e0562b'/%3E%3Cpath d='M22 7.25v10.5L12 23.5V13Z' fill='%23c2421c'/%3E%3C/svg%3E">
     <style>
       :root {
         --bg: #0f0e0c;
@@ -37,7 +37,8 @@
       }
       header {
         display: flex;
-        align-items: baseline;
+        flex-wrap: wrap;
+        align-items: center;
         justify-content: space-between;
         gap: 16px;
         padding-bottom: 20px;
@@ -49,8 +50,11 @@
         letter-spacing: 0.18em;
         text-transform: uppercase;
       }
-      h1 span {
-        color: var(--accent);
+      h1 .cube {
+        width: 0.8em;
+        height: 0.8em;
+        margin: 0 0.3em 0 0.12em;
+        vertical-align: -0.05em;
       }
       h2 {
         margin: 32px 0 12px;
@@ -58,6 +62,14 @@
         letter-spacing: 0.14em;
         text-transform: uppercase;
         color: var(--muted);
+      }
+      .header-actions {
+        display: flex;
+        margin-left: auto;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px 18px;
       }
       .count {
         display: flex;
@@ -154,13 +166,26 @@
         color: var(--muted);
         border: 1px dashed var(--line);
       }
+      dialog {
+        width: min(560px, calc(100vw - 32px));
+        padding: 0;
+        color: var(--text);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-top: 3px solid var(--accent);
+      }
+      dialog::backdrop {
+        background: rgba(15, 14, 12, 0.8);
+      }
+      dialog h2 {
+        margin: 0;
+        padding: 20px 20px 0;
+      }
       form {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
         gap: 12px;
-        padding: 16px;
-        background: var(--panel);
-        border: 1px solid var(--line);
+        padding: 16px 20px 20px;
       }
       label {
         display: grid;
@@ -185,12 +210,12 @@
         outline: 2px solid var(--accent);
         outline-offset: -1px;
       }
-      form .submit {
+      .form-actions {
+        grid-column: 1 / -1;
         display: flex;
-        align-items: end;
-      }
-      form .submit button {
-        width: 100%;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 4px;
       }
       .error {
         grid-column: 1 / -1;
@@ -219,15 +244,18 @@
   <body>
     <main>
       <header>
-        <h1>Quake<span>/</span>Kube</h1>
-        <div class="count"><span id="user"></span><span id="count"></span></div>
+        <h1>Quake<svg class="cube" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5 22 7.25 12 13 2 7.25Z" fill="#f08a62"/><path d="M2 7.25 12 13v10.5L2 17.75Z" fill="var(--accent)"/><path d="M22 7.25v10.5L12 23.5V13Z" fill="var(--accent-strong)"/></svg>Kube</h1>
+        <div class="header-actions">
+          <div class="count"><span id="user"></span><span id="count"></span></div>
+          <button id="create-open" hidden>Create server</button>
+        </div>
       </header>
 
       <h2>Servers</h2>
       <div class="servers" id="servers"></div>
 
-      <section id="create" hidden>
-        <h2>New server</h2>
+      <dialog id="create" aria-labelledby="create-title">
+        <h2 id="create-title">New server</h2>
         <form id="create-form">
           <label>Name <input name="name" required pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" maxlength="40" placeholder="friday-night"></label>
           <label>Game <select name="preset" id="presets"></select></label>
@@ -235,10 +263,13 @@
           <label>Map <select name="map" id="maps"></select></label>
           <label id="bots">Bots <input name="bots" type="number" min="0" max="16" value="2"></label>
           <label>Password <input name="password" type="password" placeholder="Optional"></label>
-          <div class="submit"><button type="submit">Create</button></div>
           <p class="error" id="create-error"></p>
+          <div class="form-actions">
+            <button type="button" class="secondary" id="create-cancel">Cancel</button>
+            <button type="submit">Create</button>
+          </div>
         </form>
-      </section>
+      </dialog>
 
       <p class="hint">Native Quake 3 clients can connect to a server's address directly.</p>
     </main>
@@ -344,8 +375,19 @@
         select.replaceChildren(...presets.map((p) => new Option(p.title, p.name)));
         select.addEventListener("change", showPreset);
         showPreset();
-        document.getElementById("create").hidden = false;
+        document.getElementById("create-open").hidden = false;
       }
+
+      const dialog = document.getElementById("create");
+      document.getElementById("create-open").addEventListener("click", () => {
+        document.getElementById("create-error").textContent = "";
+        dialog.showModal();
+      });
+      document.getElementById("create-cancel").addEventListener("click", () => dialog.close());
+      // A click on the backdrop lands on the dialog itself, outside its contents.
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) dialog.close();
+      });
 
       document.getElementById("create-form").addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -362,6 +404,7 @@
           error.textContent = "";
           form.reset();
           showPreset();
+          dialog.close();
           refresh();
         } else {
           error.textContent = (await response.text()) || "Creating the server failed.";

@@ -12,9 +12,6 @@ let
   overlays = [ gomod2nix.overlays.default ];
   pkgs = import nixpkgs {
     inherit system overlays;
-
-    # needed for terraform
-    config.allowUnfree = true;
   };
   inherit (pkgs) lib;
 
