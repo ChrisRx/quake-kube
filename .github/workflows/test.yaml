@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  # Lints and tests with the flake's dev shell, so CI uses the same tools as
+  # Lints and tests with the flake's CI shell, so CI uses the same tools as
   # development.
   test:
     runs-on: ubuntu-latest
@@ -15,9 +15,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v23
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      # Our builds, such as the Rust dependencies and the web client, are
+      # cached so they're only rebuilt when they change. Content, images and
+      # downloads are left out, since they're large and quick to rebuild or
+      # fetch.
+      - uses: cachix/cachix-action@v16
+        with:
+          name: quake-kube
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          pushFilter: '(-content-[^/]*$|\.tar\.gz$|-layer$|\.zip$|\.pk3$|-source$)'
+      # Builds from earlier runs, for cargo, go and golangci-lint.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            controllers/target
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: build-${{ runner.os }}-${{ hashFiles('flake.lock', 'controllers/Cargo.lock', 'go.sum') }}
+          restore-keys: build-${{ runner.os }}-
       - name: Lint and test
-        run: nix develop --command task lint test
+        run: nix develop .#ci --command task lint test
 
   # Checks the flake and builds the images, which are otherwise only built
   # when they're pushed from main.
@@ -27,7 +47,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v23
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      # Our builds, such as the Rust dependencies and the web client, are
+      # cached so they're only rebuilt when they change. Content, images and
+      # downloads are left out, since they're large and quick to rebuild or
+      # fetch.
+      - uses: cachix/cachix-action@v16
+        with:
+          name: quake-kube
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          pushFilter: '(-content-[^/]*$|\.tar\.gz$|-layer$|\.zip$|\.pk3$|-source$)'
       - name: Check the flake
         run: nix flake check
       - name: Build the images

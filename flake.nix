@@ -35,8 +35,6 @@
         pkgs = import nixpkgs {
           inherit system;
           overlays = [ gomod2nix.overlays.default ];
-          # needed for terraform
-          config.allowUnfree = true;
         };
       in
       {
@@ -83,10 +81,29 @@
             kubectl
             tilt
             ctlptl
-            terraform
             ioquake3
+            # Local certificates the browsers trust, for the dev cluster's
+            # web app (task ui:trust). certutil adds them to Chrome's and
+            # Firefox's trust stores.
+            mkcert
+            nss.tools
             skopeo
             gh
+          ];
+        };
+        # What CI's tasks need (lint, test, docs and the chart), without the
+        # default shell's cluster tools.
+        devShells.ci = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            go_1_27
+            golangci-lint
+            cargo
+            rustc
+            clippy
+            rustfmt
+            kubernetes-helm
+            go-task
+            mdbook
           ];
         };
       }

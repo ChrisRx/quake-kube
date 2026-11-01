@@ -23,7 +23,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v23
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      # Only reads the cache: content is too large to keep in it.
+      - uses: cachix/cachix-action@v16
+        with:
+          name: quake-kube
+          skipPush: true
       # Ubuntu 24.04 only allows unprivileged user namespaces for programs with an
       # AppArmor profile, which buildah from the nix store doesn't have. flocken
       # pushes the images with rootless buildah, which needs one.
