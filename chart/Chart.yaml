@@ -12,10 +12,11 @@ description: A Helm chart for Quake Kube
 # pipeline. Library charts do not define any templates and therefore cannot be deployed.
 type: application
 
-# Releases publish the chart with this and appVersion set from their git tag,
-# e.g. 1.2.0 for v1.2.0 (see .github/workflows/push-image.yaml).
+# Every push to main publishes the chart with this version, replacing the
+# published one (see .github/workflows/push-image.yaml).
 version: 0.1.0
 
-# The tag of the images the chart deploys by default. latest, the images built
-# from main, is for installing from a checkout.
+# The tag of the images the chart deploys by default: latest, the images built
+# from main. CI adds the commit to the published chart's annotations, which
+# the pods carry, so helm upgrade restarts them with the newest images.
 appVersion: "latest"

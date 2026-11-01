@@ -36,6 +36,18 @@
           inherit system;
           overlays = [ gomod2nix.overlays.default ];
         };
+        # kind with rootless podman. It always uses the user's podman, even
+        # when DOCKER_HOST or CONTAINER_HOST point at the rootful socket k3d
+        # uses, and creates clusters in a systemd scope with the cgroup
+        # controllers delegated, as kind's docs advise for rootless podman.
+        kind = pkgs.writeShellScriptBin "kind" ''
+          unset DOCKER_HOST CONTAINER_HOST
+          export KIND_EXPERIMENTAL_PROVIDER=podman
+          if [ "''${1:-}" = create ]; then
+            exec systemd-run --user --scope --quiet --property=Delegate=yes ${pkgs.lib.getExe pkgs.kind} "$@"
+          fi
+          exec ${pkgs.lib.getExe pkgs.kind} "$@"
+        '';
       in
       {
         # Named here so that listing them, which nix does to resolve any installable,

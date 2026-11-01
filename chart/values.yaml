@@ -10,7 +10,10 @@ crds:
 controller:
   image:
     repository: ghcr.io/chrisrx/quake-kube-controller
-    pullPolicy: IfNotPresent
+    # Kubernetes' default when empty: images tagged latest are pulled every time
+    # a pod starts, so installs from a checkout get main's newest, and others
+    # only when missing.
+    pullPolicy: ""
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
   # Log filter, in RUST_LOG syntax, e.g. "info,quake_kube_controller=debug".
@@ -57,6 +60,10 @@ gateway:
   # authentication in front of it (e.g. in the ingress) if it's reachable by
   # people who shouldn't create servers.
   maxServers: 10
+  # Delete the servers created from the web app when the chart is uninstalled,
+  # which would otherwise keep running without the controller. Servers created
+  # otherwise, e.g. with kubectl, are left alone.
+  deleteServersOnUninstall: true
   # How many of those each person can have at once, when the gateway knows who
   # people are (see auth). Empty for no limit of their own.
   maxServersPerUser: null

@@ -17,10 +17,9 @@ helm install quake-kube oci://ghcr.io/chrisrx/quake-kube \
   --namespace quake-kube --create-namespace
 ```
 
-That installs the latest release. Pin one with `--version`, e.g.
-`--version 1.2.0`. The chart deploys the images released with it. To install
-changes that aren't released yet, use the `chart` directory of a checkout
-instead, which deploys the images built from `main`.
+The chart is published from every change to the main branch, and deploys the
+newest images. `helm upgrade` with the same command updates an install to the
+newest chart and images.
 
 Then reach the web app through a port-forward:
 
@@ -166,8 +165,10 @@ need Kubernetes 1.35, or 1.33 with the `ImageVolume` feature gate.
 helm uninstall quake-kube --namespace quake-kube
 ```
 
-The `QuakeServer` CRD is kept by default (`crds.keep`), and with it every
-server. Delete it to remove them too:
+Servers created from the web app are deleted with it
+(`gateway.deleteServersOnUninstall`). Ones created with kubectl are left
+running, along with the `QuakeServer` CRD, which is kept by default
+(`crds.keep`). Delete the CRD to remove them too:
 
 ```shell
 kubectl delete crd quakeservers.quake.kube

@@ -23,7 +23,8 @@
         height: 100%;
         object-fit: contain;
       }
-      #join {
+      #join,
+      #pause {
         position: fixed;
         inset: 0;
         display: grid;
@@ -31,7 +32,8 @@
         font: 15px/1.4 system-ui, sans-serif;
         color: #e8e2d9;
       }
-      #join form {
+      #join form,
+      #pause .panel {
         display: grid;
         gap: 12px;
         width: min(340px, calc(100vw - 32px));
@@ -39,7 +41,8 @@
         background: rgba(12, 11, 10, 0.92);
         border: 1px solid #3a332c;
       }
-      #join h1 {
+      #join h1,
+      #pause h1 {
         margin: 0 0 4px;
         font: 600 13px/1 ui-monospace, monospace;
         letter-spacing: 0.12em;
@@ -64,7 +67,8 @@
         font-size: 13px;
         color: #a39a8f;
       }
-      #join button {
+      #join button,
+      #pause button {
         padding: 10px;
         font: 600 14px/1 system-ui, sans-serif;
         letter-spacing: 0.06em;
@@ -74,7 +78,8 @@
         border: 0;
         cursor: pointer;
       }
-      #join button:hover {
+      #join button:hover,
+      #pause button:hover {
         background: #e0562b;
       }
       #join button:disabled {
@@ -85,6 +90,27 @@
         color: #a39a8f;
         font-size: 13px;
         text-align: center;
+      }
+      #pause {
+        background: rgba(12, 11, 10, 0.5);
+        cursor: pointer;
+      }
+      #pause .panel {
+        cursor: default;
+      }
+      #pause button.secondary {
+        color: #a39a8f;
+        background: transparent;
+        border: 1px solid #3a332c;
+      }
+      #pause button.secondary:hover {
+        color: #e8e2d9;
+        border-color: #a39a8f;
+      }
+      #pause p {
+        margin: 0;
+        font-size: 13px;
+        color: #a39a8f;
       }
       #status {
         margin: 0;
@@ -136,6 +162,10 @@
         <h1>{{NAME}}</h1>
         <input id="player-name" placeholder="Player name" autocomplete="nickname" maxlength="32">
         <input id="password" type="password" placeholder="Server password" hidden>
+        <label id="voice-row" hidden>
+          <input id="voice" type="checkbox">
+          <span>Voice chat, which uses your microphone</span>
+        </label>
         <p id="download"></p>
         <label id="eula-row">
           <input id="eula" type="checkbox">
@@ -145,6 +175,15 @@
         <p id="status"></p>
         <a href="/">Back to servers</a>
       </form>
+    </div>
+    <div id="pause" hidden>
+      <div class="panel">
+        <h1 id="pause-title">Ready</h1>
+        <button id="resume">Play</button>
+        <button id="fullscreen" class="secondary">Full screen</button>
+        <button id="leave" class="secondary">Leave server</button>
+        <p id="pause-hint">Esc opens the game's menu.</p>
+      </div>
     </div>
 
     <script type="module">
@@ -169,6 +208,83 @@
       }
 
       nameInput.value = stored("playerName") || suggestedName || "";
+
+      // Voice chat is offered when the server has it, and remembered.
+      const voiceInput = document.getElementById("voice");
+      voiceInput.checked = stored("voiceChat") === "yes";
+      fetch(`${base}/info`)
+        .then((response) => response.json())
+        .then((info) => (document.getElementById("voice-row").hidden = !info.voip))
+        .catch(() => {});
+
+      // The engine captures the mouse as soon as it can, before the player could click anything
+      // else, like the browser's own prompts. It only gets the mouse once the player clicks to
+      // play, and losing it, e.g. to Esc, pauses with a menu.
+      const canvas = document.getElementById("canvas");
+      const pause = document.getElementById("pause");
+      const lockPointer = canvas.requestPointerLock.bind(canvas);
+      let pointerAllowed = false;
+      let playing = false;
+
+      function showPause() {
+        document.getElementById("pause-title").textContent = playing ? "Paused" : "Ready";
+        document.getElementById("resume").textContent = playing ? "Resume" : "Play";
+        document.getElementById("pause-hint").textContent = "Esc opens the game's menu.";
+        pause.hidden = false;
+      }
+
+      function resume() {
+        pointerAllowed = true;
+        // Browsers refuse the mouse for a moment after the player takes it back.
+        Promise.resolve(lockPointer()).catch(() => {
+          document.getElementById("pause-hint").textContent = "Click again in a moment.";
+        });
+      }
+
+      canvas.requestPointerLock = (...args) => {
+        if (pointerAllowed) return lockPointer(...args);
+        showPause();
+      };
+      document.addEventListener("pointerlockchange", () => {
+        if (document.pointerLockElement === canvas) {
+          playing = true;
+          pause.hidden = true;
+        } else if (playing) {
+          pointerAllowed = false;
+          showPause();
+        }
+      });
+      // A click anywhere outside the menu plays too.
+      pause.addEventListener("click", (event) => {
+        if (event.target === pause) resume();
+      });
+      document.getElementById("resume").addEventListener("click", resume);
+      // The whole page goes full screen rather than the engine's canvas, so this menu still
+      // shows over the game.
+      document.getElementById("fullscreen").addEventListener("click", async () => {
+        if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+        else await document.documentElement.requestFullscreen().catch(() => {});
+        resume();
+      });
+      document.getElementById("leave").addEventListener("click", () => (location.href = "/"));
+      // While paused, keys don't reach the game, except Esc, which opens the game's menu.
+      for (const type of ["keydown", "keypress", "keyup"]) {
+        window.addEventListener(
+          type,
+          (event) => {
+            if (pause.hidden || event.key === "Escape") {
+              if (!pause.hidden && type === "keydown") {
+                pause.hidden = true;
+                pointerAllowed = true;
+              }
+              return;
+            }
+            event.stopImmediatePropagation();
+            if (type === "keydown" && (event.key === "Enter" || event.key === " ")) resume();
+          },
+          true,
+        );
+      }
       passwordInput.hidden = !server.needsPassword;
       document.getElementById("eula-row").hidden = stored("demoEulaAccepted") === "yes";
 
@@ -308,6 +424,19 @@
         store("demoEulaAccepted", "yes");
         const playerName = nameInput.value.trim() || "UnnamedPlayer";
         store("playerName", playerName);
+        store("voiceChat", voiceInput.checked ? "yes" : "no");
+        // The microphone is asked for now, while the browser's prompt can be answered. Without it,
+        // the engine doesn't open the microphone at all.
+        let voice = voiceInput.checked && !document.getElementById("voice-row").hidden;
+        if (voice) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            for (const track of stream.getTracks()) track.stop();
+          } catch (error) {
+            console.warn("Voice chat is off, without the microphone:", error);
+            voice = false;
+          }
+        }
         const button = form.querySelector("button");
         button.disabled = true;
 
@@ -352,6 +481,9 @@
           const args = [
             "+set", "net_enabled", "1",
             "+set", "r_mode", "-2",
+            // The page has the full screen button, since the canvas alone in full screen
+            // hides the page's menus.
+            "+set", "r_fullscreen", "0",
             "+set", "cl_motd", "0",
             "+set", "com_basegame", "baseq3",
             "+name", playerName,
@@ -361,6 +493,9 @@
           }
           if (passwordInput.value) {
             args.push("+set", "password", passwordInput.value);
+          }
+          if (!voice) {
+            args.push("+set", "s_alCapture", "0");
           }
           // GameSocket decides where traffic goes, so any address works here except localhost,
           // which the engine treats as a server of its own.
@@ -384,9 +519,14 @@
                 }
               },
             ],
-            // The engine's console output, for troubleshooting from the browser's tools.
+            // The engine's console output, for troubleshooting from the browser's tools. It
+            // writes its console to stderr. Once the map has loaded, the player is asked to
+            // click to play.
             print: (text) => console.log(text),
-            printErr: (text) => console.warn(text),
+            printErr: (text) => {
+              console.warn(text);
+              if (!playing && text.startsWith("CL_InitCGame:")) showPause();
+            },
             onExit: () => (location.href = "/"),
           });
           if (onDemand) {
