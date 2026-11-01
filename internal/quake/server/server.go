@@ -98,7 +98,19 @@ func (s *Server) Start(ctx context.Context) error {
 		"+set", "com_gamename", "Quake3Arena",
 		"+exec", "server.cfg",
 	}
-	s.cmd = CommandContext(context.Background(), "ioq3ded", args...)
+	// Mods without a qagame.qvm, like Rocket Arena 3, only have a 32-bit x86 library, which
+	// only a 32-bit server can load.
+	server := "ioq3ded"
+	if cfg.Native {
+		server = "ioq3ded.i386"
+		args = append([]string{"+set", "vm_game", "0"}, args...)
+	}
+	s.cmd = CommandContext(context.Background(), server, args...)
+	if cfg.Native {
+		// Libraries that old ask for an executable stack, which glibc no longer allows
+		// unless told to.
+		s.cmd.Env = append(os.Environ(), "GLIBC_TUNABLES=glibc.rtld.execstack=2")
+	}
 	s.cmd.Dir = s.Dir
 	s.cmd.Stdout = os.Stdout
 	s.cmd.Stderr = os.Stderr

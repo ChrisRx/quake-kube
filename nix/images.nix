@@ -5,6 +5,7 @@
   pkgs,
   q3,
   ioq3ded,
+  ioq3ded-i386,
   controller,
   webClient,
   content,
@@ -40,7 +41,14 @@ in
       ioq3ded
       # q3 fetch downloads content over HTTPS.
       pkgs.cacert
-    ];
+    ]
+    # The 32-bit server, for mods with native game code.
+    ++ lib.optional (ioq3ded-i386 != null) (
+      pkgs.runCommand "ioq3ded-i386" { } ''
+        mkdir -p $out/bin
+        ln -s ${lib.getExe ioq3ded-i386} $out/bin/ioq3ded.i386
+      ''
+    );
     config = {
       Entrypoint = [ (lib.getExe q3) ];
       Env = [
@@ -68,4 +76,7 @@ in
 
   urban-terror = contentImage "quake-kube-urban-terror" content.urban-terror;
   cpma = contentImage "quake-kube-cpma" content.cpma;
+  openarena = contentImage "quake-kube-openarena" content.openarena;
+  rocket-arena = contentImage "quake-kube-rocket-arena" content.rocket-arena;
+  quake3-maps = contentImage "quake-kube-quake3-maps" content.quake3-maps;
 }

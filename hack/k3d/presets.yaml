@@ -10,6 +10,16 @@ gateway:
         - {name: Team Deathmatch, type: TeamDeathmatch}
         - {name: Capture The Flag, type: CaptureTheFlag}
       maps: [q3dm1, q3dm7, q3dm17, q3tourney2]
+    - name: quake3-maps
+      title: Quake 3 Community Maps
+      gameTypes:
+        - {name: Free For All, type: FreeForAll}
+        - {name: Tournament, type: Tournament}
+        - {name: Team Deathmatch, type: TeamDeathmatch}
+      maps: [lun3dm5, q3deck, lsdm1, estatica, rpg3dm2, chiropterata]
+      spec:
+        content:
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:1
     - name: urban-terror
       title: Urban Terror 4.3
       bots: false
@@ -28,6 +38,12 @@ gateway:
         - ut4_uptown
         - ut4_prague
         - ut4_kingdom
+        - ut4_paris
+        - ut4_kingpin
+        - ut4_riyadh
+        - ut4_eagle
+        # A community map, by Kr0t4L.
+        - ut4_orbital_sl
       spec:
         timeLimit: 20m
         game: {fsGame: q3ut4}
@@ -40,11 +56,96 @@ gateway:
         - {name: Duel, cvars: {mode_start: 1v1}}
         - {name: Team Deathmatch, cvars: {mode_start: TDM}}
         - {name: Clan Arena, cvars: {mode_start: CA}}
-      # CPMA maps missing at most two textures without the full game.
-      maps: [cpm22, cpm4a, cpm29, cpm28, cpm3a, cpm19, cpm20, cpm25, cpm27, cpm18r]
+      # CPMA maps missing at most one texture without the full game, with
+      # stand-ins from OpenArena.
+      maps: [cpm22, cpm4a, cpm29, cpm28, cpm3a, cpm19, cpm20, cpm25, cpm27, cpm18r, cpm23, cpm24]
       spec:
         game: {fsGame: cpma}
         # Otherwise CPMA picks each map's mode from its own list.
         cvars: {server_useMapModes: "0"}
         content:
           - image: k3d-quake-kube-registry:5000/quake-kube-cpma:1.53
+    - name: rocket-arena
+      title: Rocket Arena
+      gameTypes:
+        - {name: Clan Arena, cvars: {mode_start: CA}}
+      # Rocket Arena 3's maps on CPMA, whose Clan Arena is Rocket Arena's
+      # game mode. The rest of RA3's maps miss too many of the full game's
+      # textures.
+      maps: [ra3map12, ra3map17, ra3map18, ra3map9, ra3map20, ra3map16]
+      spec:
+        game: {fsGame: cpma}
+        cvars: {server_useMapModes: "0"}
+        content:
+          - image: k3d-quake-kube-registry:5000/quake-kube-cpma:1.53
+          - image: k3d-quake-kube-registry:5000/quake-kube-rocket-arena:1.76
+    - name: rocket-arena-3
+      title: Rocket Arena 3
+      bots: false
+      gameTypes:
+        # Each arena's game type is in the map's own config.
+        - {name: Arenas}
+      maps: [ra3map12, ra3map17, ra3map18, ra3map9, ra3map20, ra3map16]
+      spec:
+        # RA3's game code is only a 32-bit x86 library, so the server runs it
+        # natively, on x86-64 nodes.
+        game: {fsGame: arena, native: true}
+        content:
+          - image: k3d-quake-kube-registry:5000/quake-kube-rocket-arena:1.76
+    - name: openarena
+      title: OpenArena
+      gameTypes:
+        - {name: Free For All, type: 0}
+        - {name: Tournament, type: 1}
+        - {name: Team Deathmatch, type: 3}
+        - {name: Elimination, type: 8}
+        - {name: Last Man Standing, type: 10}
+      maps:
+        - aggressor
+        - oa_rpg3dm2
+        - oa_dm4
+        - czest1dm
+        - am_galmevish2
+        - wrackdm17
+        - oa_shouse
+        - am_underworks2
+        - oa_koth2
+        - kaos2
+        # The OpenArena Community Mappack.
+        - oacmpdm1
+        - oacmpdm3
+        - oacmpdm5
+        - oacmpdm8
+        - oacmpdm9
+      spec:
+        game: {fsGame: baseoa}
+        content:
+          - image: k3d-quake-kube-registry:5000/quake-kube-openarena:0.8.8
+    - name: openarena-ctf
+      title: OpenArena CTF
+      gameTypes:
+        - {name: Capture The Flag, type: 4}
+        - {name: One Flag CTF, type: 5}
+        - {name: Overload, type: 6}
+        - {name: Harvester, type: 7}
+        - {name: CTF Elimination, type: 9}
+        - {name: Double Domination, type: 11}
+      maps:
+        - oasago2
+        - ps37ctf2
+        - oa_ctf4ish
+        - am_thornish
+        - delta
+        - oa_bases7
+        - czest3ctf
+        - am_lavactf
+        # The OpenArena Community Mappack.
+        - oacmpctf1
+        - oacmpctf2
+        - oacmpctf3
+        - oacmpdm6
+        - oacmpdm10
+      spec:
+        game: {fsGame: baseoa}
+        content:
+          - image: k3d-quake-kube-registry:5000/quake-kube-openarena:0.8.8

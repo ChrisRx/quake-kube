@@ -154,6 +154,11 @@ func TestReadProfiles(t *testing.T) {
 	}
 	write("q3ut4", `{"common": {"q3ut4/a.pk3": ["x.tga"]}, "maps": {"ut4_casa": {"q3ut4/b.pk3": ["casa.bsp"]}}}`)
 	write("maps", `{"common": {"q3ut4/a.pk3": ["y.tga"]}, "maps": {"ut4_casa": {"maps/c.pk3": ["casa.jpg"]}}}`)
+	// A map pack's, in the mod's directory.
+	if err := os.WriteFile(filepath.Join(dir, "q3ut4", "quake-kube-profile-pack.json"),
+		[]byte(`{"maps": {"ut4_orbital": {"q3ut4/orbital.pk3": ["orbital.bsp"]}}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(dir, "baseq3"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +174,8 @@ func TestReadProfiles(t *testing.T) {
 	expected := &Profile{
 		Common: map[string][]string{"q3ut4/a.pk3": {"y.tga", "x.tga"}},
 		Maps: map[string]map[string][]string{
-			"ut4_casa": {"q3ut4/b.pk3": {"casa.bsp"}, "maps/c.pk3": {"casa.jpg"}},
+			"ut4_casa":    {"q3ut4/b.pk3": {"casa.bsp"}, "maps/c.pk3": {"casa.jpg"}},
+			"ut4_orbital": {"q3ut4/orbital.pk3": {"orbital.bsp"}},
 		},
 	}
 	if diff := cmp.Diff(expected, profile); diff != "" {

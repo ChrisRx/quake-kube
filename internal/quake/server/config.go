@@ -63,6 +63,8 @@ type GameConfig struct {
 	QuadFactor        int             `name:"g_quadfactor"`
 	SinglePlayerSkill int             `name:"g_spSkill"`
 	WeaponRespawn     int             `name:"g_weaponrespawn"`
+	// Native runs the mod's game code from its 32-bit x86 library rather than a QVM.
+	Native bool `json:"native"`
 }
 
 type GameType int
@@ -313,7 +315,9 @@ func (maps Maps) Marshal() ([]byte, error) {
 		cmds := []string{
 			fmt.Sprintf("g_gametype %d", m.Type),
 		}
-		if m.Type == CaptureTheFlag && m.CaptureLimit != 0 {
+		// Mods number their game types differently, and several have more than one mode with
+		// captures, so the limit applies whatever the type.
+		if m.CaptureLimit != 0 {
 			cmds = append(cmds, fmt.Sprintf("capturelimit %d", m.CaptureLimit))
 		}
 		if m.FragLimit != 0 {

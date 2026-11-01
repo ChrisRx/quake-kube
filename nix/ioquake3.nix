@@ -30,9 +30,13 @@ in
         "-DBUILD_RENDERER_GL2=OFF"
         "-DBUILD_GAME_LIBRARIES=OFF"
         "-DBUILD_GAME_QVMS=OFF"
-        "-DBUILD_STANDALONE=ON"
+        # Not a standalone build, so the server also speaks the legacy
+        # protocol (68) of original Quake 3, Quake3e and OpenArena clients.
       ];
       buildFlags = [ "ioq3ded" ];
+      # ioquake3's x86 assembly uses SSE2, which 32-bit builds don't enable
+      # by default.
+      env.NIX_CFLAGS_COMPILE = lib.optionalString stdenv.hostPlatform.isi686 "-msse2 -mfpmath=sse";
       installPhase = ''
         runHook preInstall
         install -Dm755 "$(find . -type f -name ioq3ded | head -1)" $out/bin/ioq3ded

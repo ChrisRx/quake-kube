@@ -5,7 +5,8 @@ For each map, starts a server from the preset in hack/k3d/presets.yaml in the de
 joins it in headless Chromium with the engine logging the files it opens, and records them.
 Files read on at least half the maps are common to all of them.
 
-Usage: hack/profile.sh <preset> <output>, e.g. hack/profile.sh cpma content/cpma/profile.json
+Usage: hack/profile.sh <preset> <output> [presets file], e.g.
+  hack/profile.sh cpma content/cpma/profile.json
 """
 import collections
 import json
@@ -35,7 +36,8 @@ def server_name(m):
 
 def main():
     preset_name, output = sys.argv[1], Path(sys.argv[2])
-    presets = yaml.safe_load(Path("hack/k3d/presets.yaml").read_text())["gateway"]["presets"]
+    presets_file = Path(sys.argv[3] if len(sys.argv) > 3 else "hack/k3d/presets.yaml")
+    presets = yaml.safe_load(presets_file.read_text())["gateway"]["presets"]
     preset = next(p for p in presets if p["name"] == preset_name)
     maps = [m.lower() for m in preset["maps"]]
 

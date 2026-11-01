@@ -18,7 +18,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        image: [urban-terror, cpma]
+        image: [urban-terror, cpma, openarena, rocket-arena, quake3-maps]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
