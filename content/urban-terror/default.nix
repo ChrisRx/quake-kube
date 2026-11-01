@@ -1,5 +1,10 @@
 # Urban Terror 4.3.4's game files for a content image: its q3ut4/ directory.
-{ stdenvNoCC, fetchurl, unzip }:
+{
+  lib,
+  stdenvNoCC,
+  fetchurl,
+  unzip,
+}:
 
 stdenvNoCC.mkDerivation {
   pname = "urban-terror-content";
@@ -15,6 +20,10 @@ stdenvNoCC.mkDerivation {
   installPhase = ''
     mkdir -p $out
     mv UrbanTerror43/q3ut4 $out/
+  ''
+  # Which files the browser client reads on each map, from task content:profile.
+  + lib.optionalString (builtins.pathExists ./profile.json) ''
+    cp ${./profile.json} $out/q3ut4/quake-kube-profile.json
   '';
   dontFixup = true;
 }

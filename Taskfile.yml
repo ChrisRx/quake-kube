@@ -62,6 +62,13 @@ tasks:
     cmds:
       - hack/dev.sh down
 
+  content:profile:
+    desc: Write a content image's profile from the dev cluster, e.g. task content:profile PRESET=cpma CONTENT=cpma
+    requires:
+      vars: [PRESET, CONTENT]
+    cmds:
+      - hack/profile.sh {{.PRESET}} content/{{.CONTENT}}/profile.json
+
   dev:
     desc: Run the tilt dev environment, creating the cluster if needed
     deps: [cluster]

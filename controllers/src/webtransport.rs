@@ -3,6 +3,7 @@
 //! it. Packets too large for a datagram go over a stream the client opens, framed with a
 //! 2-byte big-endian length.
 
+use crate::auth::Auth;
 use crate::config::WebTransportConfig;
 use crate::prelude::*;
 use crate::quake_server::GAME_PORT;
@@ -58,12 +59,13 @@ impl WebTransport {
     }
 
     /// Accepts sessions for /play/<namespace>/<name>, relaying each to that server.
-    pub async fn serve(self: Arc<Self>, store: Store<QuakeServer>) {
+    pub async fn serve(self: Arc<Self>, store: Store<QuakeServer>, auth: Arc<Auth>) {
         loop {
             let incoming = self.endpoint.accept().await;
             let store = store.clone();
+            let auth = auth.clone();
             tokio::spawn(async move {
-                if let Err(error) = handle_session(incoming, store).await {
+                if let Err(error) = handle_session(incoming, store, &auth).await {
                     debug!("webtransport session ended: {error}");
                 }
             });
@@ -146,10 +148,12 @@ fn server_config(config: &WebTransportConfig, identity: Identity) -> ServerConfi
 async fn handle_session(
     incoming: IncomingSession,
     store: Store<QuakeServer>,
+    auth: &Auth,
 ) -> anyhow::Result<()> {
     let request = incoming.await?;
-    let server = request
-        .path()
+    let full_path = request.path().to_owned();
+    let (path, query) = full_path.split_once('?').unwrap_or((&full_path, ""));
+    let server = path
         .strip_prefix("/play/")
         .and_then(|rest| rest.trim_end_matches('/').split_once('/'))
         .map(|(namespace, name)| (namespace.to_owned(), name.to_owned()))
@@ -160,6 +164,18 @@ async fn handle_session(
         request.not_found().await;
         return Ok(());
     };
+    // Sessions don't go through the proxy that signs people in, so the play page gives them a
+    // ticket instead.
+    if auth.enabled() {
+        let ticket = query
+            .split('&')
+            .find_map(|param| param.strip_prefix("ticket="))
+            .unwrap_or_default();
+        if !auth.check_ticket(ticket, &namespace, &name) {
+            request.forbidden().await;
+            return Ok(());
+        }
+    }
     let target = format!("{name}.{namespace}.svc:{GAME_PORT}");
     let connection = request.accept().await?;
     debug!(%target, "browser client connected over webtransport");

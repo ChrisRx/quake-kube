@@ -1,5 +1,5 @@
-# Presets for the dev cluster. The Tiltfile builds their content images and
-# pushes them to the cluster's registry.
+# The chart's presets, with content images the Tiltfile builds and pushes to
+# the cluster's registry.
 gateway:
   presets:
     - name: quake3

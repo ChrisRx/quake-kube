@@ -75,8 +75,14 @@ documents its settings, including:
 
 - `gateway.presets`: the games the web app offers (see
   [Add Mods And Maps](add-custom-maps.md#presets))
+- `gateway.imagePresets`: whether to offer the presets with content images,
+  which need Kubernetes 1.35
+- `gateway.auth`: how the gateway knows who people are, for server owners and
+  admins (see [Authentication](authentication.md))
 - `gateway.maxServers`: how many servers the web app can create, or 0 to turn
   creating servers off
+- `gateway.maxServersPerUser`: how many each person can have, with
+  [authentication](authentication.md)
 - `gameServers.exposure`: how native clients reach game servers, and the port
   range servers get their external ports from when they share an address
 - `master.service`: how native clients reach the master server

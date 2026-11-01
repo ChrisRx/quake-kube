@@ -2,6 +2,7 @@
 //! in the browser. Browser clients can't send UDP, so their game traffic arrives over a
 //! WebSocket and is relayed to the server here.
 
+use crate::auth::{Auth, AuthError, User};
 use crate::config::GatewayConfig;
 use crate::prelude::*;
 use crate::quake_server::MapSpec;
@@ -10,8 +11,8 @@ use crate::registry::{self, Registry};
 use crate::webtransport::WebTransport;
 use axum::body::{Body, Bytes};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, RawQuery, State};
-use axum::http::{header, StatusCode};
+use axum::extract::{FromRequestParts, Path, RawQuery, State};
+use axum::http::{header, request::Parts, Method, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
@@ -29,9 +30,14 @@ const CREATED_BY_LABEL: &str = "quake.kube/created-by";
 /// Label with the preset a server was created from.
 const PRESET_LABEL: &str = "quake.kube/preset";
 
+/// Annotation with the email address of whoever created a server from the web app, when the
+/// gateway knows who people are.
+const OWNER_ANNOTATION: &str = "quake.kube/owner";
+
 const INDEX_HTML: &str = include_str!("../static/index.html");
 const PLAY_HTML: &str = include_str!("../static/play.html");
 const GAMESOCKET_JS: &str = include_str!("../static/gamesocket.js");
+const PAKS_JS: &str = include_str!("../static/paks.js");
 const EULA_TXT: &str = include_str!("../static/eula.txt");
 
 /// The ioquake3 web client built into the image.
@@ -41,6 +47,8 @@ struct WebClient {
     version: String,
     js: Bytes,
     wasm: Bytes,
+    /// A build that reads paks on demand, for browsers with JSPI.
+    jspi: Option<(Bytes, Bytes)>,
 }
 
 impl WebClient {
@@ -48,13 +56,18 @@ impl WebClient {
         use std::hash::{DefaultHasher, Hash, Hasher};
         let js = std::fs::read(dir.join("ioquake3.js"))?;
         let wasm = std::fs::read(dir.join("ioquake3.wasm"))?;
+        let jspi = std::fs::read(dir.join("jspi/ioquake3.js"))
+            .and_then(|js| Ok((js, std::fs::read(dir.join("jspi/ioquake3.wasm"))?)))
+            .ok();
         let mut hasher = DefaultHasher::new();
         js.hash(&mut hasher);
         wasm.hash(&mut hasher);
+        jspi.hash(&mut hasher);
         Ok(WebClient {
             version: format!("{:016x}", hasher.finish()),
             js: js.into(),
             wasm: wasm.into(),
+            jspi: jspi.map(|(js, wasm)| (js.into(), wasm.into())),
         })
     }
 }
@@ -67,6 +80,7 @@ struct Gateway {
     http: reqwest::Client,
     webtransport: Option<Arc<WebTransport>>,
     web_client: Option<WebClient>,
+    auth: Arc<Auth>,
 }
 
 impl Gateway {
@@ -79,7 +93,51 @@ impl Gateway {
     }
 }
 
+/// Who made a request. None when the gateway doesn't know who people are, so anyone can do
+/// anything. Requests from people who aren't signed in are turned away.
+struct Identity(Option<User>);
+
+impl FromRequestParts<Arc<Gateway>> for Identity {
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        gateway: &Arc<Gateway>,
+    ) -> Result<Self, Self::Rejection> {
+        match gateway.auth.user(&parts.headers).await {
+            Ok(user) => Ok(Identity(user)),
+            Err(AuthError::Missing) => Err((StatusCode::UNAUTHORIZED, "not signed in")),
+            Err(error) => {
+                debug!("rejected request: {error}");
+                Err((StatusCode::UNAUTHORIZED, "not signed in"))
+            }
+        }
+    }
+}
+
+/// Whether a server can be deleted from the web app by the user: one created there, by them
+/// unless they're an admin.
+fn deletable(server: &QuakeServer, user: Option<&User>, admin: bool) -> bool {
+    if server.labels().get(CREATED_BY_LABEL).map(String::as_str) != Some("gateway") {
+        return false;
+    }
+    match user {
+        None => true,
+        Some(user) => admin || owner(server) == Some(user.email.as_str()),
+    }
+}
+
+fn owner(server: &QuakeServer) -> Option<&str> {
+    server
+        .annotations()
+        .get(OWNER_ANNOTATION)
+        .map(String::as_str)
+}
+
 pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
+    // The gateway's HTTPS requests, e.g. for IAP's keys, use the same crypto as WebTransport.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let auth = Arc::new(Auth::new(config.gateway.auth.clone(), client.clone())?);
     let (store, writer) = reflector::store();
     let registry = Registry::new(store.clone());
     tokio::spawn(registry.clone().poll());
@@ -105,7 +163,7 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
 
     let webtransport = if config.gateway.webtransport.enabled {
         let webtransport = WebTransport::new(config.gateway.webtransport.clone()).await?;
-        tokio::spawn(webtransport.clone().serve(store.clone()));
+        tokio::spawn(webtransport.clone().serve(store.clone(), auth.clone()));
         tokio::spawn(webtransport.clone().rotate_certificates());
         Some(webtransport)
     } else {
@@ -129,6 +187,7 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
         http: reqwest::Client::new(),
         webtransport,
         web_client,
+        auth,
     });
 
     let app = Router::new()
@@ -137,6 +196,10 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
         .route(
             "/static/gamesocket.js",
             get(|| async { ([(header::CONTENT_TYPE, "text/javascript")], GAMESOCKET_JS) }),
+        )
+        .route(
+            "/static/paks.js",
+            get(|| async { ([(header::CONTENT_TYPE, "text/javascript")], PAKS_JS) }),
         )
         .route(
             "/static/eula.txt",
@@ -148,6 +211,7 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
             }),
         )
         .route("/client/{file}", get(client_file))
+        .route("/client/jspi/{file}", get(jspi_client_file))
         .route("/api/config", get(app_config))
         .route("/api/servers", get(list_servers).post(create_server))
         .route(
@@ -157,7 +221,7 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
         .route("/play/{namespace}/{name}", get(play))
         .route("/play/{namespace}/{name}/", get(play))
         .route("/play/{namespace}/{name}/ws", get(relay))
-        .route("/play/{namespace}/{name}/{*path}", get(proxy))
+        .route("/play/{namespace}/{name}/{*path}", get(proxy).post(proxy))
         .with_state(gateway);
 
     let listener = TcpListener::bind(("0.0.0.0", port)).await?;
@@ -182,6 +246,8 @@ async fn shutdown_signal() {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AppConfig<'a> {
+    /// Who's signed in, when the gateway knows.
+    user: Option<String>,
     can_create: bool,
     presets: Vec<PresetView<'a>>,
 }
@@ -196,9 +262,10 @@ struct PresetView<'a> {
     bots: bool,
 }
 
-async fn app_config(State(gateway): State<Arc<Gateway>>) -> Response {
+async fn app_config(State(gateway): State<Arc<Gateway>>, Identity(user): Identity) -> Response {
     let config = &gateway.config;
     Json(AppConfig {
+        user: user.map(|user| user.email),
         can_create: config.max_servers > 0 && !config.presets.is_empty(),
         presets: config
             .presets
@@ -234,11 +301,21 @@ struct ServerView {
     bots: Option<i32>,
     max_players: Option<i32>,
     needs_password: bool,
-    /// Created from the web app, so it can be deleted from it.
+    /// Who created it from the web app, when the gateway knows who people are.
+    owner: Option<String>,
+    /// Whether the user can delete it from the web app.
     deletable: bool,
 }
 
-async fn list_servers(State(gateway): State<Arc<Gateway>>) -> Json<Vec<ServerView>> {
+async fn list_servers(
+    State(gateway): State<Arc<Gateway>>,
+    Identity(user): Identity,
+) -> Json<Vec<ServerView>> {
+    // Servers are only created from the web app in its own namespace.
+    let admin = match &user {
+        Some(user) => gateway.auth.is_admin(user, &gateway.config.namespace).await,
+        None => false,
+    };
     let mut servers: Vec<ServerView> = gateway
         .store
         .state()
@@ -275,7 +352,12 @@ async fn list_servers(State(gateway): State<Arc<Gateway>>) -> Json<Vec<ServerVie
                     .map(|(all, humans)| all - humans),
                 max_players: number("sv_maxclients"),
                 needs_password: needs_password(qs, get("g_needpass").as_deref()),
-                deletable: qs.labels().get(CREATED_BY_LABEL).map(String::as_str) == Some("gateway"),
+                owner: owner(qs).map(String::from),
+                deletable: deletable(
+                    qs,
+                    user.as_ref(),
+                    admin && qs.namespace().as_deref() == Some(gateway.config.namespace.as_str()),
+                ),
             }
         })
         .collect();
@@ -340,6 +422,7 @@ struct CreateServer {
 
 async fn create_server(
     State(gateway): State<Arc<Gateway>>,
+    Identity(user): Identity,
     Json(request): Json<CreateServer>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let config = &gateway.config;
@@ -377,13 +460,28 @@ async fn create_server(
     if !(0..=16).contains(&request.bots) {
         return bad_request("bots must be between 0 and 16");
     }
-    let created = gateway
+    let created: Vec<_> = gateway
         .store
         .state()
-        .iter()
+        .into_iter()
         .filter(|qs| qs.labels().contains_key(CREATED_BY_LABEL))
-        .count();
-    if created >= config.max_servers {
+        .collect();
+    if let (Some(limit), Some(user)) = (config.max_servers_per_user, &user) {
+        let owned = created
+            .iter()
+            .filter(|qs| owner(qs) == Some(user.email.as_str()))
+            .count();
+        if owned >= limit {
+            return Err((
+                StatusCode::CONFLICT,
+                format!(
+                    "each person can have up to {limit} {} at once",
+                    if limit == 1 { "server" } else { "servers" }
+                ),
+            ));
+        }
+    }
+    if created.len() >= config.max_servers {
         return Err((
             StatusCode::CONFLICT,
             format!(
@@ -415,6 +513,11 @@ async fn create_server(
     let labels = server.labels_mut();
     labels.insert(CREATED_BY_LABEL.to_owned(), "gateway".to_owned());
     labels.insert(PRESET_LABEL.to_owned(), preset.name.clone());
+    if let Some(user) = &user {
+        server
+            .annotations_mut()
+            .insert(OWNER_ANNOTATION.to_owned(), user.email.clone());
+    }
     Api::<QuakeServer>::namespaced(gateway.client.clone(), &config.namespace)
         .create(&PostParams::default(), &server)
         .await
@@ -431,21 +534,35 @@ async fn create_server(
                 )
             }
         })?;
+    info!(
+        server = %request.name,
+        user = user.as_ref().map(|user| user.email.as_str()),
+        "created server"
+    );
     Ok(StatusCode::CREATED)
 }
 
 async fn delete_server(
     State(gateway): State<Arc<Gateway>>,
+    Identity(user): Identity,
     Path((namespace, name)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let server = gateway
         .server(&namespace, &name)
         .map_err(|status| (status, "no such server".to_owned()))?;
-    if !server.labels().contains_key(CREATED_BY_LABEL) {
-        return Err((
-            StatusCode::FORBIDDEN,
-            "only servers created here can be deleted here".to_owned(),
-        ));
+    if !deletable(&server, user.as_ref(), false) {
+        // Only ask the API server about admins when it matters.
+        let admin = match &user {
+            Some(user) => gateway.auth.is_admin(user, &namespace).await,
+            None => false,
+        };
+        if !deletable(&server, user.as_ref(), admin) {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "only servers created here can be deleted, by whoever created them or an admin"
+                    .to_owned(),
+            ));
+        }
     }
     Api::<QuakeServer>::namespaced(gateway.client.clone(), &namespace)
         .delete(&name, &DeleteParams::default())
@@ -457,6 +574,13 @@ async fn delete_server(
                 "deleting the server failed".to_owned(),
             )
         })?;
+    info!(
+        %namespace,
+        server = %name,
+        user = user.as_ref().map(|user| user.email.as_str()),
+        owner = owner(&server),
+        "deleted server"
+    );
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -465,9 +589,24 @@ async fn client_file(State(gateway): State<Arc<Gateway>>, Path(file): Path<Strin
     let Some(client) = &gateway.web_client else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let (content_type, body) = match file.as_str() {
-        "ioquake3.js" => ("text/javascript", client.js.clone()),
-        "ioquake3.wasm" => ("application/wasm", client.wasm.clone()),
+    serve_client_file(&file, &client.js, &client.wasm)
+}
+
+/// Serves the ioquake3 web client that reads paks on demand.
+async fn jspi_client_file(
+    State(gateway): State<Arc<Gateway>>,
+    Path(file): Path<String>,
+) -> Response {
+    let Some((js, wasm)) = gateway.web_client.as_ref().and_then(|c| c.jspi.as_ref()) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    serve_client_file(&file, js, wasm)
+}
+
+fn serve_client_file(file: &str, js: &Bytes, wasm: &Bytes) -> Response {
+    let (content_type, body) = match file {
+        "ioquake3.js" => ("text/javascript", js.clone()),
+        "ioquake3.wasm" => ("application/wasm", wasm.clone()),
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
     (
@@ -483,6 +622,7 @@ async fn client_file(State(gateway): State<Arc<Gateway>>, Path(file): Path<Strin
 /// The page that runs the browser client for one server.
 async fn play(
     State(gateway): State<Arc<Gateway>>,
+    Identity(user): Identity,
     Path((namespace, name)): Path<(String, String)>,
 ) -> Result<Html<String>, StatusCode> {
     let server = gateway.server(&namespace, &name)?;
@@ -501,6 +641,7 @@ async fn play(
             "address": wt.public_address(),
             "port": wt.public_port(),
             "certificateHashes": wt.certificate_hashes(),
+            "ticket": gateway.auth.enabled().then(|| gateway.auth.ticket(&namespace, &name)),
         })
     });
     // Kubernetes names can't contain characters that need escaping in HTML or JavaScript, and
@@ -509,6 +650,14 @@ async fn play(
         PLAY_HTML
             .replace("{{NAMESPACE}}", &namespace)
             .replace("{{CLIENT_VERSION}}", &client.version)
+            .replace(
+                "{{ON_DEMAND}}",
+                if client.jspi.is_some() {
+                    "true"
+                } else {
+                    "false"
+                },
+            )
             .replace("{{NAME}}", &name)
             .replace(
                 "{{WEBTRANSPORT}}",
@@ -519,36 +668,88 @@ async fn play(
             .replace(
                 "{{NEEDS_PASSWORD}}",
                 if needs_password { "true" } else { "false" },
+            )
+            .replace(
+                "{{MAPS}}",
+                &serde_json::to_string(
+                    &server
+                        .spec
+                        .maps
+                        .iter()
+                        .map(|map| map.name.to_lowercase())
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap_or_else(|_| "[]".to_owned())
+                .replace('<', "\\u003c"),
+            )
+            // Last, since it comes from the user.
+            .replace(
+                "{{SUGGESTED_NAME}}",
+                &serde_json::to_string(&user.map(|user| suggested_name(&user.email)))
+                    .unwrap_or_else(|_| "null".to_owned())
+                    .replace('<', "\\u003c"),
             ),
     ))
 }
 
+/// A player name for someone who hasn't chosen one, from their email address, e.g. "ranger"
+/// for ranger+quake@example.com.
+fn suggested_name(email: &str) -> String {
+    let local = email.split('@').next().unwrap_or_default();
+    let local = local.split('+').next().unwrap_or_default();
+    // The most the join form allows.
+    local.chars().take(32).collect()
+}
+
 /// Whether a path on a game server's pod is one browser clients use: the server's info, and
 /// its content's manifest and pk3 files.
-fn proxied(path: &str) -> bool {
+fn proxied(method: &Method, path: &str) -> bool {
+    let pak = |name: &str| {
+        name.ends_with(".pk3")
+            && name
+                .split('/')
+                .all(|elem| !elem.is_empty() && !elem.starts_with('.'))
+    };
+    if *method == Method::POST {
+        // Batches of ranges from a pak, for browsers that load files on demand.
+        return path.strip_prefix("paks/").is_some_and(pak);
+    }
+    if let Some(index) = path.strip_prefix("paks/") {
+        // Which files the engine reads, and where they are in each pak.
+        return index == "profile.json" || index.strip_suffix(".json").is_some_and(pak);
+    }
     let Some(asset) = path.strip_prefix("assets/") else {
         return path == "info";
     };
-    asset == "manifest.json"
-        || (asset.ends_with(".pk3")
-            && asset
-                .split('/')
-                .all(|elem| !elem.is_empty() && !elem.starts_with('.')))
+    asset == "manifest.json" || pak(asset)
 }
 
 /// Proxies the server info and content browser clients download from the game server's pod.
 async fn proxy(
     State(gateway): State<Arc<Gateway>>,
+    Identity(_): Identity,
     Path((namespace, name, path)): Path<(String, String, String)>,
     RawQuery(query): RawQuery,
+    method: Method,
+    body: Body,
 ) -> Result<Response, StatusCode> {
     gateway.server(&namespace, &name)?;
-    if !proxied(&path) {
+    if !proxied(&method, &path) {
         return Err(StatusCode::NOT_FOUND);
     }
     let query = query.map(|q| format!("?{q}")).unwrap_or_default();
     let url = format!("http://{name}.{namespace}.svc:{HTTP_PORT}/{path}{query}");
-    let upstream = gateway.http.get(&url).send().await.map_err(|error| {
+    let mut request = gateway.http.request(method.clone(), &url);
+    if method == Method::POST {
+        // A list of ranges, which the game server limits too.
+        let body = axum::body::to_bytes(body, 1 << 20)
+            .await
+            .map_err(|_| StatusCode::PAYLOAD_TOO_LARGE)?;
+        request = request
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(body);
+    }
+    let upstream = request.send().await.map_err(|error| {
         debug!(%url, "proxy failed: {error}");
         StatusCode::BAD_GATEWAY
     })?;
@@ -573,6 +774,7 @@ async fn proxy(
 /// Relays a browser client's game traffic between its WebSocket and the server's UDP port.
 async fn relay(
     State(gateway): State<Arc<Gateway>>,
+    Identity(_): Identity,
     Path((namespace, name)): Path<(String, String)>,
     ws: WebSocketUpgrade,
 ) -> Response {
@@ -627,5 +829,75 @@ async fn relay_traffic(ws: WebSocket, target: &str) -> anyhow::Result<()> {
     tokio::select! {
         res = upstream => res,
         res = downstream => res,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proxies_only_content() {
+        let (get, post) = (Method::GET, Method::POST);
+        for path in [
+            "info",
+            "assets/manifest.json",
+            "assets/q3ut4/123-zUrT43_004.pk3",
+            "paks/q3ut4/zUrT43_004.pk3.json",
+            "paks/profile.json",
+        ] {
+            assert!(proxied(&get, path), "{path}");
+        }
+        assert!(proxied(&post, "paks/q3ut4/zUrT43_004.pk3"));
+        for (method, path) in [
+            (&get, "metrics"),
+            (&get, "assets/q3ut4/server.cfg"),
+            (&get, "assets/../etc/passwd.pk3"),
+            (&get, "paks/q3ut4/.hidden.pk3.json"),
+            (&get, "paks/q3ut4/zUrT43_004.pk3"),
+            (&post, "paks/q3ut4/zUrT43_004.pk3.json"),
+            (&post, "paks/profile.json"),
+            (&post, "info"),
+            (&post, "assets/q3ut4/123-zUrT43_004.pk3"),
+        ] {
+            assert!(!proxied(method, path), "{method} {path}");
+        }
+    }
+
+    #[test]
+    fn suggests_names() {
+        assert_eq!(suggested_name("ranger@example.com"), "ranger");
+        assert_eq!(suggested_name("ranger+quake@example.com"), "ranger");
+        assert_eq!(
+            suggested_name(&format!("{}@example.com", "x".repeat(40))).len(),
+            32
+        );
+    }
+
+    #[test]
+    fn who_can_delete() {
+        let user = |email: &str| User {
+            email: email.to_owned(),
+            groups: Vec::new(),
+        };
+        let (owner_user, other) = (user("ranger@example.com"), user("sarge@example.com"));
+        let mut server = QuakeServer::new("duel", Default::default());
+        // Not created from the web app.
+        assert!(!deletable(&server, None, true));
+        assert!(!deletable(&server, Some(&owner_user), true));
+        server
+            .labels_mut()
+            .insert(CREATED_BY_LABEL.to_owned(), "gateway".to_owned());
+        // Without auth, anyone can.
+        assert!(deletable(&server, None, false));
+        // Without an owner, e.g. created before auth was turned on, only admins can.
+        assert!(!deletable(&server, Some(&owner_user), false));
+        assert!(deletable(&server, Some(&owner_user), true));
+        server
+            .annotations_mut()
+            .insert(OWNER_ANNOTATION.to_owned(), owner_user.email.clone());
+        assert!(deletable(&server, Some(&owner_user), false));
+        assert!(!deletable(&server, Some(&other), false));
+        assert!(deletable(&server, Some(&other), true));
     }
 }

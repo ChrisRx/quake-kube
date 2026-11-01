@@ -1,0 +1,28 @@
+{{- if .Values.gateway.httpRoute.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "chart.fullname" . }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  {{- with .Values.gateway.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.gateway.httpRoute.parentRefs }}
+  {{- fail "gateway.httpRoute.parentRefs needs the Gateways to attach to" }}
+  {{- end }}
+  parentRefs:
+    {{- toYaml .Values.gateway.httpRoute.parentRefs | nindent 4 }}
+  {{- with .Values.gateway.httpRoute.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - backendRefs:
+        - name: {{ include "chart.fullname" . }}-gateway
+          port: {{ .Values.gateway.service.port }}
+{{- end }}

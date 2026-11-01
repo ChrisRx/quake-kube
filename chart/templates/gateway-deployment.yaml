@@ -70,6 +70,11 @@ spec:
               mountPath: /etc/quake-kube/webtransport-tls
               readOnly: true
             {{- end }}
+            {{- if .Values.gateway.auth.ticketSecretName }}
+            - name: ticket
+              mountPath: /etc/quake-kube/ticket
+              readOnly: true
+            {{- end }}
           securityContext:
             {{- toYaml .Values.controller.securityContext | nindent 12 }}
           resources:
@@ -80,6 +85,11 @@ spec:
             name: {{ include "chart.fullname" . }}-controller
         {{- with .Values.gateway.webtransport.tls.secretName }}
         - name: webtransport-tls
+          secret:
+            secretName: {{ . }}
+        {{- end }}
+        {{- with .Values.gateway.auth.ticketSecretName }}
+        - name: ticket
           secret:
             secretName: {{ . }}
         {{- end }}

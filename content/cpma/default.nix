@@ -2,6 +2,7 @@
 # directory, with a stand-in for its default player model from OpenArena (see
 # openarena-mynx.sh).
 {
+  lib,
   stdenvNoCC,
   fetchurl,
   unzip,
@@ -39,6 +40,10 @@ stdenvNoCC.mkDerivation {
       openarena-0.8.8/baseoa/pak2-players.pk3 openarena-0.8.8/COPYING -d openarena
     sh ${./openarena-mynx.sh} openarena/pak2-players.pk3 $out/cpma/zz-openarena-mynx.pk3
     cp openarena/COPYING $out/cpma/zz-openarena-mynx-COPYING.txt
+  ''
+  # Which files the browser client reads on each map, from task content:profile.
+  + lib.optionalString (builtins.pathExists ./profile.json) ''
+    cp ${./profile.json} $out/cpma/quake-kube-profile.json
   '';
   dontFixup = true;
 }

@@ -20,6 +20,12 @@ rules:
   - apiGroups: ["quake.kube"]
     resources: ["quakeservers"]
     verbs: ["get", "list", "watch"]
+  {{- if ne .Values.gateway.auth.mode "none" }}
+  # Asking whether people are admins.
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["subjectaccessreviews"]
+    verbs: ["create"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -68,4 +74,46 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "chart.fullname" . }}-gateway
     namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if ne .Values.gateway.auth.mode "none" }}
+---
+# Admins, who can delete anyone's servers from the web app. Bind it to people
+# in the web app's namespace, or set gateway.auth.admins.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "chart.fullname" . }}-admin
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["quake.kube"]
+    resources: ["quakeservers"]
+    verbs: ["get", "list", "watch", "delete"]
+{{- with .Values.gateway.auth.admins }}
+{{- if or .users .groups }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "chart.fullname" $ }}-admin
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "chart.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "chart.fullname" $ }}-admin
+subjects:
+  {{- range .users }}
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: {{ . | quote }}
+  {{- end }}
+  {{- range .groups }}
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ . | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}
 {{- end }}

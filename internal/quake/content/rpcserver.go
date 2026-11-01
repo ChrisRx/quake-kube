@@ -49,7 +49,8 @@ func (r *RPCServer) checkServerHealth() {
 
 func (r *RPCServer) Serve(l net.Listener) error {
 	if r.health != nil {
-		r.health.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+		// Not ready until the game server answers, which takes a while for big mods.
+		r.health.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
 		healthpb.RegisterHealthServer(r.s, r.health)
 		go r.checkServerHealth()
 	}

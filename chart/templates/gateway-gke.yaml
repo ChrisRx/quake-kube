@@ -1,0 +1,57 @@
+{{- /* GKE's load balancer settings for the gateway's Service. */}}
+{{- with .Values.gateway.gke }}
+{{- if .enabled }}
+{{- if and .iap.enabled (ne $.Values.gateway.auth.mode "iap") }}
+{{- fail "gateway.gke.iap needs gateway.auth.mode iap, so the gateway knows who people are" }}
+{{- end }}
+{{- if $.Values.gateway.httpRoute.enabled }}
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: {{ include "chart.fullname" $ }}-gateway
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "chart.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  default:
+    timeoutSec: {{ .timeoutSec }}
+    {{- if .iap.enabled }}
+    iap:
+      enabled: true
+      {{- with .iap.clientID }}
+      clientID: {{ . | quote }}
+      {{- end }}
+      {{- with .iap.clientSecretName }}
+      oauth2ClientSecret:
+        name: {{ . }}
+      {{- end }}
+    {{- end }}
+  targetRef:
+    group: ""
+    kind: Service
+    name: {{ include "chart.fullname" $ }}-gateway
+{{- end }}
+{{- if $.Values.gateway.ingress.enabled }}
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ include "chart.fullname" $ }}-gateway
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "chart.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  timeoutSec: {{ .timeoutSec }}
+  {{- if .iap.enabled }}
+  iap:
+    enabled: true
+    {{- with .iap.clientSecretName }}
+    oauthclientCredentials:
+      secretName: {{ . }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
