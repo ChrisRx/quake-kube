@@ -28,6 +28,9 @@ const RETRY_INTERVAL: Duration = Duration::from_secs(300);
 /// How many presets' pods run at once.
 const CONCURRENCY: usize = 2;
 
+/// The start of the name of each preset's ConfigMap of thumbnails.
+const CONFIGMAP_PREFIX: &str = "quake-kube-levelshots-";
+
 pub struct Levelshots {
     client: Client,
     namespace: String,
@@ -61,8 +64,12 @@ impl Levelshots {
         cache.get(preset)?.get(&map.to_lowercase()).cloned()
     }
 
-    /// Makes the presets' thumbnails, trying again later for any that fail.
+    /// Makes the presets' thumbnails, trying again later for any that fail, after deleting
+    /// those of presets that are gone.
     pub async fn run(self: Arc<Self>, presets: Vec<Preset>) {
+        if let Err(error) = self.delete_stale(&presets).await {
+            warn!("deleting old levelshots failed: {error}");
+        }
         let mut pending = presets;
         while !pending.is_empty() {
             let results: Vec<_> = stream::iter(pending)
@@ -92,10 +99,28 @@ impl Levelshots {
         }
     }
 
+    /// Deletes the ConfigMaps of thumbnails for presets that are no longer offered.
+    async fn delete_stale(&self, presets: &[Preset]) -> anyhow::Result<()> {
+        let configmaps = Api::<ConfigMap>::namespaced(self.client.clone(), &self.namespace);
+        let managed =
+            ListParams::default().labels(&format!("app.kubernetes.io/managed-by={FIELD_MANAGER}"));
+        for cm in configmaps.list(&managed).await? {
+            let name = cm.name_any();
+            let Some(preset) = name.strip_prefix(CONFIGMAP_PREFIX) else {
+                continue;
+            };
+            if !presets.iter().any(|p| p.name == preset) {
+                info!(%preset, "deleting levelshots of a preset that's gone");
+                configmaps.delete(&name, &DeleteParams::default()).await?;
+            }
+        }
+        Ok(())
+    }
+
     /// Loads a preset's thumbnails, making them first if they're missing or out of date.
     async fn ensure(&self, preset: &Preset) -> anyhow::Result<()> {
         let source = source_checksum(preset);
-        let name = format!("quake-kube-levelshots-{}", preset.name);
+        let name = format!("{CONFIGMAP_PREFIX}{}", preset.name);
         let configmaps = Api::<ConfigMap>::namespaced(self.client.clone(), &self.namespace);
         let existing = configmaps.get_opt(&name).await?;
         let current = existing.filter(|cm| {

@@ -124,7 +124,7 @@ k8s_resource(
 # Content images for the presets in hack/k3d/presets.yaml. Tilt can't put its
 # own image names in the gateway's config, so they're pushed with fixed tags.
 # Building one downloads the mod, 1.4 GB for Urban Terror, which nix keeps.
-for name, tag in [('urban-terror', '4.3.4'), ('cpma', '1.53'), ('openarena', '0.8.8'), ('rocket-arena', '1.76'), ('quake3-maps', '1')]:
+for name, tag in [('urban-terror', '4.3.4'), ('cpma', '1.53'), ('openarena', '0.8.8'), ('rocket-arena', '1.76'), ('quake3-maps', '1'), ('ufreeze', '1.21'), ('defrag', '1.91.31')]:
     local_resource(
         'content-' + name,
         cmd='hack/nix-image.sh %s-image 127.0.0.1:5005/quake-kube-%s:%s --push' % (name, name, tag),
