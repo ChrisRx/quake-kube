@@ -23,7 +23,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v23
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      # Our builds, such as the Rust dependencies and the web client, are
+      # cached so they're only rebuilt when they change. Content, images and
+      # downloads are left out, since they're large and quick to rebuild or
+      # fetch.
+      - uses: cachix/cachix-action@v16
+        with:
+          name: quake-kube
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          pushFilter: '(-content-[^/]*$|\.tar\.gz$|-layer$|\.zip$|\.pk3$|-source$)'
       # Ubuntu 24.04 only allows unprivileged user namespaces for programs with an
       # AppArmor profile, which buildah from the nix store doesn't have. flocken
       # pushes the images with rootless buildah, which needs one.
@@ -51,10 +59,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v23
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      # Our builds, such as the Rust dependencies and the web client, are
+      # cached so they're only rebuilt when they change. Content, images and
+      # downloads are left out, since they're large and quick to rebuild or
+      # fetch.
+      - uses: cachix/cachix-action@v16
+        with:
+          name: quake-kube
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          pushFilter: '(-content-[^/]*$|\.tar\.gz$|-layer$|\.zip$|\.pk3$|-source$)'
       - name: Push the chart
         run: |
-          echo "$GITHUB_TOKEN" | nix develop --command helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          nix develop --command task chart:push VERSION="${GITHUB_REF_NAME#v}"
+          echo "$GITHUB_TOKEN" | nix develop .#ci --command helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          nix develop .#ci --command task chart:push VERSION="${GITHUB_REF_NAME#v}"
         env:
           GITHUB_TOKEN: ${{ github.token }}

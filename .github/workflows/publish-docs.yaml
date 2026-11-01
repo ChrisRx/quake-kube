@@ -34,9 +34,17 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v6
       - uses: DeterminateSystems/nix-installer-action@v23
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
-      # Builds with the flake's dev shell, so with the same mdbook as development.
-      - run: nix develop --command task docs
+      # Our builds, such as the Rust dependencies and the web client, are
+      # cached so they're only rebuilt when they change. Content, images and
+      # downloads are left out, since they're large and quick to rebuild or
+      # fetch.
+      - uses: cachix/cachix-action@v16
+        with:
+          name: quake-kube
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          pushFilter: '(-content-[^/]*$|\.tar\.gz$|-layer$|\.zip$|\.pk3$|-source$)'
+      # Builds with the flake's CI shell, so with the same mdbook as development.
+      - run: nix develop .#ci --command task docs
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5

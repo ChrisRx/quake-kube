@@ -78,10 +78,30 @@ task dev
 This creates the cluster if needed. The web app is at
 `https://quake.172-28-0-100.sslip.io` through Traefik.
 
-Its certificate comes from the cluster's local CA. To open it without
-warnings, write the CA certificate with `hack/dev.sh ca` and import it into
-your browser as a trusted authority. The CA is new each time the cluster is
-created.
+`task ui` opens it. Tilt's UI also links to it.
+
+Its certificate comes from cert-manager's `local-ca` issuer. For browsers to
+trust it, which WebTransport needs, run this once per machine:
+
+```shell
+task ui:trust
+```
+
+It creates a local CA with [mkcert](https://github.com/FiloSottile/mkcert) and
+adds it to Chrome's and Firefox's trust stores (restart them afterward). The
+dev cluster then signs with that CA, from `task cluster` or the next `task ui`,
+so the web app is trusted, including after recreating the cluster. On NixOS,
+mkcert only changes the browsers' trust stores; the system's are declared in
+its configuration, e.g. `security.pki.certificateFiles`.
+
+Without mkcert's CA, each cluster has a CA of its own. `task ui` writes it to
+`hack/k3d/local-ca.crt` when it changes and says how to import it into a
+browser, which a new cluster needs again. `task ui:ca` writes it on its own.
+
+`task ui:forward` opens the web app through a port-forward instead, with the
+current kubectl context, which also works for a cluster installed with the
+chart, e.g. `task ui:forward NAMESPACE=games PORT=9090`. Without HTTPS, browsers
+use a WebSocket rather than WebTransport, and don't cache the game's files.
 
 The dev cluster's presets, in `hack/k3d/presets.yaml`, are the chart's with
 content images from the working tree. Tilt builds them and pushes them to the

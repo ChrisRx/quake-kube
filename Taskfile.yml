@@ -62,6 +62,30 @@ tasks:
     cmds:
       - hack/dev.sh down
 
+  ui:
+    desc: Open the dev cluster's web app, with mkcert's CA if there is one (see ui:trust)
+    cmds:
+      - hack/dev.sh ui
+
+  ui:forward:
+    desc: Open the web app through a port-forward on the current kubectl context, e.g. task ui:forward NAMESPACE=games
+    vars:
+      NAMESPACE: '{{.NAMESPACE | default "quake-kube"}}'
+      RELEASE: '{{.RELEASE | default "quake-kube"}}'
+      PORT: '{{.PORT | default "8080"}}'
+    cmds:
+      - hack/dev.sh forward {{.NAMESPACE}} {{.RELEASE}} {{.PORT}}
+
+  ui:trust:
+    desc: Have your browsers trust a local CA from mkcert, which every dev cluster then uses (once per machine)
+    cmds:
+      - hack/dev.sh trust
+
+  ui:ca:
+    desc: Write the dev cluster's CA certificate and print how to trust it in a browser
+    cmds:
+      - hack/dev.sh ca
+
   content:profile:
     desc: Write a content image's profile from the dev cluster, e.g. task content:profile PRESET=cpma CONTENT=cpma
     requires:
