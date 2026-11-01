@@ -209,6 +209,12 @@ spec:
                 description: Address native clients connect to, as host:port.
                 nullable: true
                 type: string
+              message:
+                description: |-
+                  Why the server isn't running, when something's wrong rather than it still starting,
+                  e.g. its content failed to download.
+                nullable: true
+                type: string
               observedGeneration:
                 format: int64
                 nullable: true

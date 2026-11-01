@@ -4,6 +4,7 @@ go 1.27.0
 
 require (
 	github.com/google/go-cmp v0.7.0
+	github.com/gopikchr/gopikchr v0.0.0-20251102185413-ac35dc1606f8
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/labstack/echo/v4 v4.16.3
 	github.com/prometheus/client_golang v1.25.0

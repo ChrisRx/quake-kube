@@ -54,6 +54,9 @@ spec:
               value: {{ .Values.gateway.logLevel | quote }}
             - name: QUAKE_KUBE_CONFIG
               value: /etc/quake-kube/config.yaml
+            # For the pods that make thumbnails of each game's maps.
+            - name: QUAKE_SERVER_IMAGE
+              value: "{{ .Values.gameServers.image.repository }}:{{ .Values.gameServers.image.tag | default .Chart.AppVersion }}"
           ports:
             - name: http
               containerPort: 8080

@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	q3fetch "github.com/ChrisRx/quake-kube/cmd/q3/app/fetch"
+	q3levelshots "github.com/ChrisRx/quake-kube/cmd/q3/app/levelshots"
 	q3run "github.com/ChrisRx/quake-kube/cmd/q3/app/run"
 )
 
@@ -20,6 +21,7 @@ func main() {
 	}
 	cmd.AddCommand(
 		q3fetch.NewCommand(),
+		q3levelshots.NewCommand(),
 		q3run.NewCommand(),
 	)
 

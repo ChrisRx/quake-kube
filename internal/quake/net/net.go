@@ -47,7 +47,11 @@ func SendCommandWithTimeout(addr, cmd string, timeout time.Duration) ([]byte, er
 }
 
 func SendServerCommand(addr, password, cmd string) ([]byte, error) {
-	return SendCommand(addr, fmt.Sprintf("rcon %s %s", password, cmd))
+	return SendServerCommandWithTimeout(addr, password, cmd, 0)
+}
+
+func SendServerCommandWithTimeout(addr, password, cmd string, timeout time.Duration) ([]byte, error) {
+	return SendCommandWithTimeout(addr, fmt.Sprintf("rcon %s %s", password, cmd), timeout)
 }
 
 func parseMap(data []byte) map[string]string {

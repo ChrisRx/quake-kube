@@ -21,6 +21,10 @@ schema = 3
     version = 'v0.7.0'
     hash = 'sha256-JbxZFBFGCh/Rj5XZ1vG94V2x7c18L8XKB0N9ZD5F2rM='
 
+  [mod.'github.com/gopikchr/gopikchr']
+    version = 'v0.0.0-20251102185413-ac35dc1606f8'
+    hash = 'sha256-FqBSONt1P/tN+qvDVD7PzLXmN9AfVt1zwD2x3XwEMuA='
+
   [mod.'github.com/hako/durafmt']
     version = 'v0.0.0-20210608085754-5c1018a4e16b'
     hash = 'sha256-/IILmdwBY3tib/KhopKX0H8zr13dg9Z2XgPJkS0QkjI='

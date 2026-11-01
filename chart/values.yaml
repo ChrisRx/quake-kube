@@ -67,6 +67,10 @@ gateway:
   # How many of those each person can have at once, when the gateway knows who
   # people are (see auth). Empty for no limit of their own.
   maxServersPerUser: null
+  # Servers created from the web app are deleted after nobody has played on
+  # them for this long, e.g. 30m or 2h, including servers that never started.
+  # Empty keeps them until someone deletes them.
+  idleTimeout: 30m
   # The games offered when creating a server. Each game type sets a type
   # (g_gametype, a name or a mod's number) and/or cvars, e.g. CPMA's
   # mode_start. spec is the start of each server's QuakeServer spec, e.g. a

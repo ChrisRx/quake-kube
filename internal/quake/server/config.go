@@ -24,6 +24,11 @@ func ReadConfigFromFile(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	return ParseConfig(data)
+}
+
+// ParseConfig parses a config in the YAML the controller renders.
+func ParseConfig(data []byte) (*Config, error) {
 	cfg := Default()
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err

@@ -56,7 +56,23 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
 }
 
 async fn reconcile(quake_server: Arc<QuakeServer>, ctx: Arc<Context>) -> Result<Action> {
-    quake_server.reconcile(ctx).await
+    let result = quake_server.reconcile(ctx.clone()).await;
+    // A server without a port never gets a pod, so say why in its status.
+    if let Err(error @ Error::PortsExhausted(_)) = &result {
+        let message = error.to_string();
+        let status = quake_server.status.as_ref();
+        if status.and_then(|s| s.message.as_ref()) != Some(&message) {
+            let namespace = quake_server.namespace().unwrap_or_default();
+            Api::<QuakeServer>::namespaced(ctx.client.clone(), &namespace)
+                .patch_status(
+                    &quake_server.name_any(),
+                    &PatchParams::default(),
+                    &Patch::Merge(serde_json::json!({ "status": { "message": message } })),
+                )
+                .await?;
+        }
+    }
+    result
 }
 
 fn error_policy(_object: Arc<QuakeServer>, _error: &Error, _ctx: Arc<Context>) -> Action {

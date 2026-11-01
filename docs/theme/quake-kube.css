@@ -78,3 +78,71 @@
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     letter-spacing: 0.02em;
 }
+
+/* A diagram drawn from a pikchr block, in the page's color, fit to the text
+   and never wider than it was drawn. Shrunk to fit, it opens larger when
+   clicked (diagram.js). */
+.content .diagram {
+    max-width: var(--diagram-width);
+    margin: 1.5em 0;
+    color: var(--fg);
+}
+
+.content .diagram svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.content .diagram.zoomable {
+    cursor: zoom-in;
+}
+
+.content .diagram.zoomable:focus-visible {
+    outline: 2px solid var(--links);
+    outline-offset: 4px;
+}
+
+.diagram-zoom {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    color: var(--fg);
+    background: var(--bg);
+}
+
+.diagram-zoom::backdrop {
+    background: var(--bg);
+}
+
+.diagram-zoom .scroll {
+    box-sizing: border-box;
+    display: grid;
+    place-items: center;
+    height: 100%;
+    overflow: auto;
+    padding: 56px 32px 32px;
+}
+
+.diagram-zoom svg {
+    display: block;
+    max-width: none;
+    height: auto;
+}
+
+.diagram-zoom .close {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    width: 36px;
+    height: 36px;
+    font: 400 22px/1 system-ui, sans-serif;
+    color: var(--fg);
+    background: var(--sidebar-bg);
+    border: 1px solid var(--sidebar-spacer, #3a332c);
+    cursor: pointer;
+}

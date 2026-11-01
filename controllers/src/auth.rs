@@ -227,7 +227,7 @@ impl Auth {
         .is_ok()
     }
 
-    /// Whether the user can delete anyone's servers in the namespace, which is whether
+    /// Whether the user can change or delete anyone's servers in the namespace, which is whether
     /// Kubernetes RBAC lets them delete QuakeServers there.
     pub async fn is_admin(&self, user: &User, namespace: &str) -> bool {
         let key = (user.email.clone(), namespace.to_owned());

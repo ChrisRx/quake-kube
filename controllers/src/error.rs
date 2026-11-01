@@ -14,7 +14,7 @@ pub enum Error {
     #[error("Failed to render server config: {0}")]
     RenderYaml(#[from] serde_yaml_ng::Error),
 
-    #[error("No free ports left in {0}")]
+    #[error("no free ports left in {0}")]
     PortsExhausted(PortRange),
 }
 
