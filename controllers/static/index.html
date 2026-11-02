@@ -397,6 +397,22 @@
         margin: 0;
         overflow-wrap: anywhere;
       }
+      /* The create and edit dialog is wider, for its map picker. */
+      dialog#create {
+        width: min(780px, calc(100vw - 32px));
+      }
+      .form-wide {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+      .field-label {
+        font: 12px var(--mono);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
       .form-section {
         grid-column: 1 / -1;
         margin: 8px 0 0;
@@ -465,9 +481,12 @@
           <label>Name <input name="name" required maxlength="64" placeholder="Friday Night"></label>
           <label>Game <select name="preset" id="presets"></select></label>
           <label>Mode <select name="gameType" id="game-types"></select></label>
-          <label>Map <select name="map" id="maps"></select></label>
           <label id="bots">Bots <input name="bots" type="number" min="0" max="16" value="2" inputmode="numeric"></label>
           <label>Password <input name="password" type="password" placeholder="Optional" autocomplete="new-password"></label>
+          <div class="form-wide">
+            <span class="field-label">Maps, played in the order picked</span>
+            <div id="map-picker"></div>
+          </div>
           <p class="form-section">Match, blank for the game's defaults</p>
           <label>Frag limit <input name="fragLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-step="5" data-start="20"></label>
           <label>Time limit, min <input name="timeLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-step="5" data-start="10"></label>
@@ -476,6 +495,7 @@
           <p class="note" id="edit-note" hidden></p>
           <p class="error" id="create-error" aria-live="polite"></p>
           <div class="form-actions">
+            <button type="button" class="secondary" id="create-link" title="Copy a link that opens this dialog with the game, mode and maps picked">Copy link</button>
             <button type="button" class="secondary" id="create-cancel">Cancel</button>
             <button type="submit" id="create-submit">Create</button>
           </div>
@@ -527,6 +547,7 @@
       </div>
     </template>
 
+    <script src="/static/maps.js"></script>
     <script>
       const serversEl = document.getElementById("servers");
       const template = document.getElementById("server-template");
@@ -597,6 +618,7 @@
         } else {
           if (s.game) details.append(detail("game", s.game));
           if (s.map) details.append(detail("map", s.map));
+          if (s.rotation > 1) details.append(detail("rotation", `${s.rotation} maps`));
           if (s.gameType) details.append(detail("mode", s.gameType));
           if (s.humans != null) {
             const bots = s.bots ? ` +${s.bots} bots` : "";
@@ -742,14 +764,18 @@
       }
 
       // Offers the chosen game's modes and maps.
-      function showPreset() {
+      const picker = new MapPicker(document.getElementById("map-picker"), {
+        levelshot: (preset, map) => `/api/presets/${encodeURIComponent(preset)}/levelshots/${map.toLowerCase()}.jpg`,
+      });
+      document.getElementById("game-types").addEventListener("change", (e) => picker.setGameType(e.target.value));
+
+      // Offers the chosen game's modes and maps, with maps picked, by default its first.
+      function showPreset({ maps, gameType } = {}) {
         const preset = config.presets.find((p) => p.name === document.getElementById("presets").value);
-        document.getElementById("game-types").replaceChildren(
-          ...preset.gameTypes.map((name) => new Option(name, name)),
-        );
-        document.getElementById("maps").replaceChildren(
-          ...preset.maps.map((map) => new Option(map, map)),
-        );
+        const modes = document.getElementById("game-types");
+        modes.replaceChildren(...preset.gameTypes.map((t) => new Option(t.name, t.name)));
+        if (gameType && preset.gameTypes.some((t) => t.name === gameType)) modes.value = gameType;
+        picker.setPreset(preset, { maps: maps ?? preset.maps.slice(0, 1), gameType: modes.value });
         const bots = document.getElementById("bots");
         bots.hidden = !preset.bots;
         bots.querySelector("input").disabled = !preset.bots;
@@ -769,11 +795,45 @@
         if (!config.canCreate) return;
         const select = document.getElementById("presets");
         select.replaceChildren(...config.presets.map((p) => new Option(p.title, p.name)));
-        select.addEventListener("change", showPreset);
+        select.addEventListener("change", () => showPreset());
         showPreset();
         document.getElementById("create-open").hidden = false;
         renderQuota();
+        openFromLink();
       }
+
+      // A link to the dialog with a game, mode and maps picked, for sharing a rotation.
+      function dialogLink() {
+        const url = new URL("/", location.href);
+        url.searchParams.set("preset", document.getElementById("presets").value);
+        url.searchParams.set("mode", document.getElementById("game-types").value);
+        url.searchParams.set("maps", picker.value.join(","));
+        return url.toString();
+      }
+
+      function openFromLink() {
+        const params = new URLSearchParams(location.search);
+        const preset = config.presets.find((p) => p.name === params.get("preset"));
+        if (!preset) return;
+        history.replaceState(null, "", location.pathname);
+        openServerDialog(null);
+        document.getElementById("presets").value = preset.name;
+        showPreset({
+          gameType: params.get("mode") ?? undefined,
+          maps: (params.get("maps") ?? "").split(",").filter(Boolean),
+        });
+      }
+
+      document.getElementById("create-link").addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        try {
+          await navigator.clipboard.writeText(dialogLink());
+          button.textContent = "Copied";
+        } catch {
+          button.textContent = "Couldn't copy";
+        }
+        setTimeout(() => (button.textContent = "Copy link"), 1500);
+      });
 
       // Runs a dialog's request with its submit button disabled, so a double click doesn't
       // send it twice, and shows why it failed.
@@ -839,11 +899,11 @@
         if (server) {
           const settings = server.settings;
           presets.value = settings.preset;
-          showPreset();
+          showPreset({ maps: settings.maps, gameType: settings.gameType });
           showEditNote();
           for (const [name, value] of Object.entries(settings)) {
             const field = form.elements.namedItem(name);
-            if (field && name !== "preset" && value != null) field.value = value;
+            if (field && !["preset", "gameType"].includes(name) && value != null) field.value = value;
           }
         } else {
           showPreset();
@@ -903,6 +963,11 @@
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const data = Object.fromEntries(new FormData(form));
+        data.maps = picker.value;
+        if (data.maps.length === 0) {
+          document.getElementById("create-error").textContent = "Pick at least one map.";
+          return;
+        }
         data.bots = Number(data.bots ?? 0);
         // Blank limits mean the game's defaults.
         for (const name of ["fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {

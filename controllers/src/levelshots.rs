@@ -37,15 +37,43 @@ pub struct Levelshots {
     /// The game server image, which has q3.
     image: String,
     http: reqwest::Client,
-    /// Thumbnails by preset, then by lowercase map name.
-    cache: RwLock<HashMap<String, HashMap<String, Bytes>>>,
+    /// Each preset's maps, by preset.
+    cache: RwLock<HashMap<String, PresetMaps>>,
+}
+
+/// What's known about a preset's maps.
+#[derive(Default)]
+struct PresetMaps {
+    /// Thumbnails, by lowercase map name.
+    shots: HashMap<String, Bytes>,
+    /// What maps' arena files say about them, by lowercase map name.
+    arenas: BTreeMap<String, Arena>,
+}
+
+/// What a map's arena file says about it.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct Arena {
+    /// Its long name, e.g. "The Longest Yard".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// The game types it's made for, e.g. ffa, tourney, team or ctf.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub types: Vec<String>,
 }
 
 #[derive(Deserialize)]
 struct Response {
     /// JPEGs, base64 encoded.
     maps: BTreeMap<String, ByteString>,
+    #[serde(default)]
+    arenas: BTreeMap<String, Arena>,
 }
+
+/// The key of a ConfigMap's arena details.
+const ARENAS_KEY: &str = "arenas.json";
+
+/// Changes when what's kept in the ConfigMaps does, so they're made again.
+const FORMAT: u32 = 2;
 
 impl Levelshots {
     pub fn new(client: Client, namespace: String, image: String) -> Arc<Self> {
@@ -61,7 +89,17 @@ impl Levelshots {
     /// A map's thumbnail, once the preset's are ready.
     pub fn get(&self, preset: &str, map: &str) -> Option<Bytes> {
         let cache = self.cache.read().unwrap();
-        cache.get(preset)?.get(&map.to_lowercase()).cloned()
+        cache.get(preset)?.shots.get(&map.to_lowercase()).cloned()
+    }
+
+    /// What the preset's maps' arena files say about them, by lowercase map name, once
+    /// they're known.
+    pub fn arenas(&self, preset: &str) -> BTreeMap<String, Arena> {
+        let cache = self.cache.read().unwrap();
+        cache
+            .get(preset)
+            .map(|maps| maps.arenas.clone())
+            .unwrap_or_default()
     }
 
     /// Makes the presets' thumbnails, trying again later for any that fail, after deleting
@@ -127,17 +165,22 @@ impl Levelshots {
             cm.annotations().get(SOURCE_ANNOTATION).map(String::as_str) == Some(source.as_str())
         });
         let maps = match current {
-            Some(cm) => (cm.binary_data.unwrap_or_default().into_iter())
-                .map(|(file, data)| {
-                    (
-                        file.trim_end_matches(".jpg").to_owned(),
-                        Bytes::from(data.0),
-                    )
-                })
-                .collect(),
+            Some(cm) => PresetMaps {
+                arenas: (cm.data.as_ref())
+                    .and_then(|data| serde_json::from_str(data.get(ARENAS_KEY)?).ok())
+                    .unwrap_or_default(),
+                shots: (cm.binary_data.unwrap_or_default().into_iter())
+                    .map(|(file, data)| {
+                        (
+                            file.trim_end_matches(".jpg").to_owned(),
+                            Bytes::from(data.0),
+                        )
+                    })
+                    .collect(),
+            },
             None => {
                 let maps = self.make(preset, &source).await?;
-                let binary_data: BTreeMap<String, ByteString> = (maps.iter())
+                let binary_data: BTreeMap<String, ByteString> = (maps.shots.iter())
                     .filter(|(map, _)| valid_key(map))
                     .map(|(map, data)| (format!("{map}.jpg"), ByteString(data.to_vec())))
                     .collect();
@@ -156,6 +199,10 @@ impl Levelshots {
                         ..ObjectMeta::default()
                     },
                     binary_data: Some(binary_data),
+                    data: Some(BTreeMap::from([(
+                        ARENAS_KEY.to_owned(),
+                        serde_json::to_string(&maps.arenas)?,
+                    )])),
                     ..ConfigMap::default()
                 };
                 configmaps
@@ -165,7 +212,12 @@ impl Levelshots {
                         &Patch::Apply(&configmap),
                     )
                     .await?;
-                info!(preset = %preset.name, count = maps.len(), "made levelshots");
+                info!(
+                    preset = %preset.name,
+                    count = maps.shots.len(),
+                    arenas = maps.arenas.len(),
+                    "made levelshots"
+                );
                 maps
             }
         };
@@ -177,7 +229,7 @@ impl Levelshots {
     }
 
     /// Runs a pod with the preset's content and fetches the thumbnails it serves.
-    async fn make(&self, preset: &Preset, source: &str) -> anyhow::Result<HashMap<String, Bytes>> {
+    async fn make(&self, preset: &Preset, source: &str) -> anyhow::Result<PresetMaps> {
         let pods = Api::<Pod>::namespaced(self.client.clone(), &self.namespace);
         // Named for what it's made from, so gateway replicas share one pod.
         let name = format!("quake-kube-levelshots-{}-{}", preset.name, &source[..8]);
@@ -197,7 +249,7 @@ impl Levelshots {
     }
 
     /// Waits for the pod to serve the thumbnails and fetches them.
-    async fn fetch(&self, pods: &Api<Pod>, name: &str) -> anyhow::Result<HashMap<String, Bytes>> {
+    async fn fetch(&self, pods: &Api<Pod>, name: &str) -> anyhow::Result<PresetMaps> {
         let deadline = Instant::now() + POD_TIMEOUT;
         let ip = loop {
             let pod = pods.get(name).await?;
@@ -235,9 +287,12 @@ impl Levelshots {
             .error_for_status()?
             .json()
             .await?;
-        Ok((response.maps.into_iter())
-            .map(|(map, data)| (map, Bytes::from(data.0)))
-            .collect())
+        Ok(PresetMaps {
+            shots: (response.maps.into_iter())
+                .map(|(map, data)| (map, Bytes::from(data.0)))
+                .collect(),
+            arenas: response.arenas,
+        })
     }
 }
 
@@ -245,6 +300,7 @@ impl Levelshots {
 fn source_checksum(preset: &Preset) -> String {
     let game = preset.spec.game.as_ref();
     checksum(&(
+        FORMAT,
         game.and_then(|game| game.fs_game.as_ref()),
         &preset.spec.content,
         &preset.maps,

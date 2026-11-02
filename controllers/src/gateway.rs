@@ -4,8 +4,8 @@
 
 use crate::auth::{Auth, AuthError, User};
 use crate::config::{ExposureType, GatewayConfig};
-use crate::config::{Preset, PresetGameType};
-use crate::levelshots::Levelshots;
+use crate::config::{MapList, Preset, PresetGameType};
+use crate::levelshots::{Arena, Levelshots};
 use crate::prelude::*;
 use crate::protocol;
 use crate::quake_server::{MapSpec, QuakeServerSpec};
@@ -52,6 +52,7 @@ const INDEX_HTML: &str = include_str!("../static/index.html");
 const PLAY_HTML: &str = include_str!("../static/play.html");
 const GAMESOCKET_JS: &str = include_str!("../static/gamesocket.js");
 const PAKS_JS: &str = include_str!("../static/paks.js");
+const MAPS_JS: &str = include_str!("../static/maps.js");
 const EULA_TXT: &str = include_str!("../static/eula.txt");
 
 /// The ioquake3 web client built into the image.
@@ -295,6 +296,10 @@ pub async fn run(client: Client, config: Config) -> anyhow::Result<()> {
             get(|| async { ([(header::CONTENT_TYPE, "text/javascript")], PAKS_JS) }),
         )
         .route(
+            "/static/maps.js",
+            get(|| async { ([(header::CONTENT_TYPE, "text/javascript")], MAPS_JS) }),
+        )
+        .route(
             "/static/eula.txt",
             get(|| async {
                 (
@@ -428,9 +433,20 @@ struct AppConfig<'a> {
 struct PresetView<'a> {
     name: &'a str,
     title: &'a str,
-    game_types: Vec<&'a str>,
+    game_types: Vec<GameTypeView<'a>>,
     maps: &'a [String],
     bots: bool,
+    /// What the maps' arena files say about them, by lowercase map name, once known.
+    map_info: BTreeMap<String, Arena>,
+    map_lists: &'a [MapList],
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GameTypeView<'a> {
+    name: &'a str,
+    /// The game type maps' arena files name for it, e.g. "ctf", when known.
+    arena: Option<&'a str>,
 }
 
 async fn app_config(State(gateway): State<Arc<Gateway>>, Identity(user): Identity) -> Response {
@@ -444,21 +460,29 @@ async fn app_config(State(gateway): State<Arc<Gateway>>, Identity(user): Identit
         // Only applies when the gateway knows who people are.
         max_servers_per_user: user_known.then_some(config.max_servers_per_user).flatten(),
         idle_timeout: config.idle_timeout.map(|timeout| timeout.as_secs()),
-        presets: preset_views(config),
+        presets: preset_views(&gateway),
     })
     .into_response()
 }
 
-fn preset_views(config: &GatewayConfig) -> Vec<PresetView<'_>> {
-    config
+fn preset_views(gateway: &Gateway) -> Vec<PresetView<'_>> {
+    gateway
+        .config
         .presets
         .iter()
         .map(|preset| PresetView {
             name: &preset.name,
             title: &preset.title,
-            game_types: preset.game_types.iter().map(|t| t.name.as_str()).collect(),
+            game_types: (preset.game_types.iter())
+                .map(|t| GameTypeView {
+                    name: &t.name,
+                    arena: t.arena_type(),
+                })
+                .collect(),
             maps: &preset.maps,
             bots: preset.bots,
+            map_info: gateway.levelshots.arenas(&preset.name),
+            map_lists: &preset.map_lists,
         })
         .collect()
 }
@@ -477,6 +501,8 @@ struct ServerView {
     /// Filled in once the server answers queries.
     hostname: Option<String>,
     map: Option<String>,
+    /// How many maps it plays in turn.
+    rotation: usize,
     game_type: Option<String>,
     humans: Option<i32>,
     bots: Option<i32>,
@@ -542,6 +568,7 @@ async fn list_servers(
                         .and_then(|server| server.hostname.clone())
                 }),
                 map: get("mapname"),
+                rotation: qs.spec.maps.len(),
                 // Mods that choose their modes by cvars, like DeFRaG, are named by the
                 // preset's game type the server was created with.
                 game_type: number("gametype")
@@ -626,12 +653,14 @@ struct ServerSettings {
     #[serde(default)]
     preset: String,
     game_type: String,
-    map: String,
+    /// The maps the server plays in turn, a new one after each match.
+    #[serde(default)]
+    maps: Vec<String>,
     #[serde(default)]
     bots: i32,
     #[serde(default)]
     password: Option<String>,
-    /// Limits for the map, or the game's defaults when unset.
+    /// Limits for each map, or the game's defaults when unset.
     #[serde(default)]
     frag_limit: Option<i32>,
     /// In minutes.
@@ -655,7 +684,7 @@ impl ServerSettings {
             preset: (server.labels().get(PRESET_LABEL).cloned()).unwrap_or_default(),
             game_type: (server.annotations().get(GAME_TYPE_ANNOTATION).cloned())
                 .unwrap_or_default(),
-            map: map.map(|map| map.name.clone()).unwrap_or_default(),
+            maps: spec.maps.iter().map(|map| map.name.clone()).collect(),
             bots: (spec.bot.as_ref())
                 .and_then(|bot| bot.min_players)
                 .unwrap_or(0),
@@ -682,8 +711,11 @@ impl ServerSettings {
         let Some(game_type) = preset.game_types.iter().find(|t| t.name == self.game_type) else {
             return bad_request("unknown game type".to_owned());
         };
-        if !preset.maps.contains(&self.map) {
-            return bad_request("unknown map".to_owned());
+        if self.maps.is_empty() || self.maps.len() > MAX_ROTATION {
+            return bad_request(format!("choose 1 to {MAX_ROTATION} maps"));
+        }
+        if let Some(map) = self.maps.iter().find(|map| !preset.maps.contains(map)) {
+            return bad_request(format!("unknown map {map}"));
         }
         let limits = [
             ("bots", Some(self.bots), 0, 16),
@@ -719,13 +751,15 @@ impl ServerSettings {
         if let Some(max_players) = set(self.max_players) {
             server.max_clients = Some(max_players);
         }
-        spec.maps = vec![MapSpec {
-            name: self.map.clone(),
-            type_: None,
-            capture_limit: set(self.capture_limit),
-            frag_limit: set(self.frag_limit),
-            time_limit: set(self.time_limit).map(|minutes| format!("{minutes}m")),
-        }];
+        spec.maps = (self.maps.iter())
+            .map(|name| MapSpec {
+                name: name.clone(),
+                type_: None,
+                capture_limit: set(self.capture_limit),
+                frag_limit: set(self.frag_limit),
+                time_limit: set(self.time_limit).map(|minutes| format!("{minutes}m")),
+            })
+            .collect();
         spec
     }
 }
@@ -818,6 +852,9 @@ async fn create_server(
         format!("too many servers are called {hostname}"),
     ))
 }
+
+/// The most maps a server's rotation can have.
+const MAX_ROTATION: usize = 64;
 
 /// The longest display name a server can have.
 const MAX_DISPLAY_NAME: usize = 64;
@@ -1244,7 +1281,7 @@ async fn play(
         .then(|| {
             json!({
                 "settings": ServerSettings::of(&server),
-                "presets": preset_views(&gateway.config),
+                "presets": preset_views(&gateway),
             })
         });
     let client = gateway
@@ -1614,7 +1651,7 @@ mod tests {
             name: " Friday ".to_owned(),
             preset: "quake3".to_owned(),
             game_type: "Instagib".to_owned(),
-            map: "q3dm17".to_owned(),
+            maps: vec!["q3dm17".to_owned(), "q3dm7".to_owned()],
             bots: 3,
             password: Some(String::new()),
             frag_limit: Some(30),
@@ -1626,7 +1663,9 @@ mod tests {
         assert_eq!(hostname, "Friday");
         let spec = settings.spec(&preset, game_type, &hostname);
         assert_eq!(spec.cvars["g_instagib"], "1");
-        assert_eq!(spec.maps[0].time_limit.as_deref(), Some("15m"));
+        assert_eq!(spec.maps.len(), 2);
+        assert_eq!(spec.maps[1].name, "q3dm7");
+        assert_eq!(spec.maps[1].time_limit.as_deref(), Some("15m"));
         assert_eq!(spec.maps[0].capture_limit, None);
         // The preset's own setting stays unless one is chosen.
         assert_eq!(spec.server.as_ref().unwrap().max_clients, Some(8));
@@ -1653,7 +1692,11 @@ mod tests {
 
         for invalid in [
             ServerSettings {
-                map: "q3dm1".to_owned(),
+                maps: vec!["q3dm17".to_owned(), "q3dm1".to_owned()],
+                ..settings.clone()
+            },
+            ServerSettings {
+                maps: Vec::new(),
                 ..settings.clone()
             },
             ServerSettings {

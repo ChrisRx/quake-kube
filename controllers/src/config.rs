@@ -166,6 +166,7 @@ impl GatewayConfig {
             name: name.to_owned(),
             type_: Some(GameType::Named(type_)),
             cvars: BTreeMap::new(),
+            arena: None,
         };
         vec![Preset {
             name: "quake3".to_owned(),
@@ -181,6 +182,7 @@ impl GatewayConfig {
                 .to_vec(),
             bots: true,
             spec: QuakeServerSpec::default(),
+            map_lists: Vec::new(),
         }]
     }
 }
@@ -203,6 +205,16 @@ pub struct Preset {
     /// name, game type, map, bots and password.
     #[serde(default)]
     pub spec: QuakeServerSpec,
+    /// Named lists of the preset's maps the web app offers to pick from, e.g. for duels.
+    #[serde(default)]
+    pub map_lists: Vec<MapList>,
+}
+
+/// A named list of maps, e.g. "Duel classics".
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct MapList {
+    pub name: String,
+    pub maps: Vec<String>,
 }
 
 impl Preset {
@@ -222,6 +234,27 @@ pub struct PresetGameType {
     pub type_: Option<GameType>,
     #[serde(default)]
     pub cvars: BTreeMap<String, String>,
+    /// The game type maps' arena files name for it, e.g. "ctf", so the web app can offer the
+    /// maps made for it. Inferred for Quake 3's game types; mods' need it set.
+    #[serde(default)]
+    pub arena: Option<String>,
+}
+
+impl PresetGameType {
+    /// The game type in arena files this plays, when it's known.
+    pub fn arena_type(&self) -> Option<&str> {
+        if let Some(arena) = &self.arena {
+            return Some(arena);
+        }
+        match self.type_? {
+            GameType::Named(GameTypeName::FreeForAll) => Some("ffa"),
+            GameType::Named(GameTypeName::Tournament) => Some("tourney"),
+            GameType::Named(GameTypeName::SinglePlayer) => Some("single"),
+            GameType::Named(GameTypeName::TeamDeathmatch) => Some("team"),
+            GameType::Named(GameTypeName::CaptureTheFlag) => Some("ctf"),
+            GameType::Number(_) => None,
+        }
+    }
 }
 
 impl Default for GatewayConfig {

@@ -227,59 +227,6 @@
       .settings .stepper button:last-child {
         border-left: 0;
       }
-      .settings .maps {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-        /* Tiles keep their size, scrolling rather than shrinking when there are many. */
-        grid-auto-rows: max-content;
-        gap: 8px;
-        max-height: 268px;
-        overflow-y: auto;
-      }
-      #pause .settings .map {
-        display: grid;
-        gap: 0;
-        padding: 0;
-        font: 12px/1 ui-monospace, monospace;
-        letter-spacing: 0;
-        text-transform: none;
-        color: #e8e2d9;
-        background: #1b1916;
-        border: 1px solid #3a332c;
-        overflow: hidden;
-      }
-      #pause .settings .map:hover {
-        border-color: #a39a8f;
-        background: #1b1916;
-      }
-      #pause .settings .map[aria-pressed="true"] {
-        border-color: #e0562b;
-        outline: 1px solid #e0562b;
-      }
-      .settings .map .shot {
-        aspect-ratio: 4 / 3;
-        background: #26221e center / cover no-repeat;
-      }
-      /* A map whose pak has no levelshot. */
-      .settings .map .shot.missing {
-        display: grid;
-        place-items: center;
-        background: repeating-linear-gradient(135deg, #221f1b 0 8px, #1b1916 8px 16px);
-      }
-      .settings .map .shot.missing::after {
-        content: "No picture";
-        font: 11px ui-monospace, monospace;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #6f675e;
-      }
-      .settings .map span {
-        padding: 6px;
-        line-height: 1.3;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
       .settings .actions {
         display: flex;
         justify-content: flex-end;
@@ -341,6 +288,7 @@
     </script>
     <script src="/static/gamesocket.js"></script>
     <script src="/static/paks.js"></script>
+    <script src="/static/maps.js"></script>
   </head>
   <body>
     <canvas id="canvas"></canvas>
@@ -380,8 +328,8 @@
             <label>Mode <select name="gameType" id="s-mode"></select></label>
           </div>
           <p class="warning" id="s-switch"></p>
-          <div class="field-label" id="s-maps-label">Map
-            <div class="maps" id="s-maps" role="group" aria-labelledby="s-maps-label"></div>
+          <div class="field-label">Maps, played in the order picked
+            <div id="s-maps"></div>
           </div>
           <div class="fields">
             <label id="s-bots">Bots <input name="bots" type="number" min="0" max="16" inputmode="numeric"></label>
@@ -512,7 +460,11 @@
       const settingsForm = document.getElementById("settings-form");
       const presetSelect = document.getElementById("s-preset");
       const pauseMenu = document.getElementById("pause-menu");
-      let chosenMap = null;
+      const picker =
+        manage &&
+        new MapPicker(document.getElementById("s-maps"), {
+          levelshot: (preset, map) => `/api/presets/${encodeURIComponent(preset)}/levelshots/${map.toLowerCase()}.jpg`,
+        });
 
       function closeSettings() {
         settingsPanel.hidden = true;
@@ -551,40 +503,15 @@
 
       const currentPreset = () => manage.presets.find((p) => p.name === manage.settings.preset);
 
-      // Offers the chosen game's modes and maps, with the gateway's thumbnails of each game's
-      // maps.
-      function showSettingsPreset(map) {
+      // Offers the chosen game's modes and maps, with the maps picked, by default its first.
+      function showSettingsPreset(maps, gameType) {
         const preset = manage.presets.find((p) => p.name === presetSelect.value);
-        document.getElementById("s-mode").replaceChildren(
-          ...preset.gameTypes.map((name) => new Option(name, name)),
-        );
-        chosenMap = preset.maps.includes(map) ? map : preset.maps[0];
+        const modes = document.getElementById("s-mode");
+        modes.replaceChildren(...preset.gameTypes.map((t) => new Option(t.name, t.name)));
+        if (gameType && preset.gameTypes.some((t) => t.name === gameType)) modes.value = gameType;
         const sameGame = preset.name === manage.settings.preset;
-        document.getElementById("s-maps").replaceChildren(
-          ...preset.maps.map((name) => {
-            const tile = document.createElement("button");
-            tile.type = "button";
-            tile.className = "map";
-            tile.setAttribute("aria-pressed", String(name === chosenMap));
-            const shot = document.createElement("div");
-            shot.className = "shot";
-            const url = `/api/presets/${encodeURIComponent(preset.name)}/levelshots/${name.toLowerCase()}.jpg`;
-            const img = new Image();
-            img.onload = () => (shot.style.backgroundImage = `url("${url}")`);
-            img.onerror = () => shot.classList.add("missing");
-            img.src = url;
-            const label = document.createElement("span");
-            label.textContent = name;
-            tile.append(shot, label);
-            tile.addEventListener("click", () => {
-              chosenMap = name;
-              for (const other of tile.parentElement.children) {
-                other.setAttribute("aria-pressed", String(other === tile));
-              }
-            });
-            return tile;
-          }),
-        );
+        const picked = (maps ?? []).filter((m) => preset.maps.includes(m));
+        picker.setPreset(preset, { maps: picked.length ? picked : preset.maps.slice(0, 1), gameType: modes.value });
         const bots = document.getElementById("s-bots");
         bots.hidden = !preset.bots;
         document.getElementById("s-switch").textContent = sameGame
@@ -597,8 +524,8 @@
         const settings = manage.settings;
         settingsForm.reset();
         presetSelect.value = currentPreset() ? settings.preset : manage.presets[0].name;
-        showSettingsPreset(settings.map);
-        for (const name of ["gameType", "bots", "fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {
+        showSettingsPreset(settings.maps, settings.gameType);
+        for (const name of ["bots", "fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {
           if (settings[name] != null) settingsForm.elements.namedItem(name).value = settings[name];
         }
         document.getElementById("s-error").textContent = "";
@@ -613,14 +540,20 @@
       if (manage && manage.presets.length > 0) {
         for (const input of settingsForm.querySelectorAll('input[type="number"]')) addStepper(input);
         presetSelect.replaceChildren(...manage.presets.map((p) => new Option(p.title, p.name)));
-        presetSelect.addEventListener("change", () => showSettingsPreset(chosenMap));
+        presetSelect.addEventListener("change", () => showSettingsPreset(picker.value));
+        document.getElementById("s-mode").addEventListener("change", (e) => picker.setGameType(e.target.value));
         document.getElementById("open-settings").hidden = false;
         document.getElementById("open-settings").addEventListener("click", openSettings);
         document.getElementById("s-back").addEventListener("click", closeSettings);
         settingsForm.addEventListener("submit", async (event) => {
           event.preventDefault();
           const data = { ...manage.settings, ...Object.fromEntries(new FormData(settingsForm)) };
-          data.map = chosenMap;
+          data.maps = picker.value;
+          delete data.map;
+          if (data.maps.length === 0) {
+            document.getElementById("s-error").textContent = "Pick at least one map.";
+            return;
+          }
           data.bots = Number(data.bots || 0);
           for (const name of ["fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {
             data[name] = data[name] ? Number(data[name]) : null;
@@ -655,7 +588,7 @@
           }
           note.textContent =
             result.applied === "live"
-              ? `Changing to ${data.map}…`
+              ? `Changing to ${data.maps[0]}…`
               : "Saved. The server picks up the change within a minute or two.";
           setTimeout(() => {
             closeSettings();

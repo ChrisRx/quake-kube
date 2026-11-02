@@ -135,6 +135,12 @@ gateway:
         - moteof_final
         - trespass
       # Without image volumes, only the demo's maps are offered.
+      # Lists of maps the web app offers to pick a rotation from.
+      mapLists:
+        - name: Quake 3 demo
+          maps: [q3dm1, q3dm7, q3dm17, q3tourney2]
+        - name: Duels
+          maps: [q3tourney2, pukka3tourney2, pukka3tourney5, pukka3tourney7, akutatourney3, akutatourney4, akutatourney5, akutatourney6, akutatourney8, zl3tourney1, ct3tourney2, pjw3tourney1, ztn3tourney1]
       mapsWithoutImages: [q3dm1, q3dm7, q3dm17, q3tourney2]
       spec:
         content:
@@ -180,9 +186,9 @@ gateway:
     - name: cpma
       title: CPMA
       gameTypes:
-        - {name: Free For All, cvars: {mode_start: FFA}}
-        - {name: Duel, cvars: {mode_start: 1v1}}
-        - {name: Team Deathmatch, cvars: {mode_start: TDM}}
+        - {name: Free For All, cvars: {mode_start: FFA}, arena: ffa}
+        - {name: Duel, cvars: {mode_start: 1v1}, arena: tourney}
+        - {name: Team Deathmatch, cvars: {mode_start: TDM}, arena: team}
         - {name: Clan Arena, cvars: {mode_start: CA}}
       # CPMA maps missing at most one texture without the full game, with
       # stand-ins from OpenArena.
@@ -298,9 +304,9 @@ gateway:
     - name: openarena
       title: OpenArena
       gameTypes:
-        - {name: Free For All, type: 0}
-        - {name: Tournament, type: 1}
-        - {name: Team Deathmatch, type: 3}
+        - {name: Free For All, type: 0, arena: ffa}
+        - {name: Tournament, type: 1, arena: tourney}
+        - {name: Team Deathmatch, type: 3, arena: team}
         - {name: Elimination, type: 8}
         - {name: Last Man Standing, type: 10}
       maps:
@@ -379,11 +385,11 @@ gateway:
     - name: openarena-ctf
       title: OpenArena CTF
       gameTypes:
-        - {name: Capture The Flag, type: 4}
-        - {name: One Flag CTF, type: 5}
-        - {name: Overload, type: 6}
-        - {name: Harvester, type: 7}
-        - {name: CTF Elimination, type: 9}
+        - {name: Capture The Flag, type: 4, arena: ctf}
+        - {name: One Flag CTF, type: 5, arena: oneflag}
+        - {name: Overload, type: 6, arena: overload}
+        - {name: Harvester, type: 7, arena: harvester}
+        - {name: CTF Elimination, type: 9, arena: ctf}
         - {name: Double Domination, type: 11}
       maps:
         - oasago2
