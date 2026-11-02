@@ -69,7 +69,7 @@ gateway:
       mapsWithoutImages: [q3dm1, q3dm7, q3dm17, q3tourney2]
       spec:
         content:
-          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:5
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:6
     - name: quake3-ctf
       title: Quake 3 CTF
       gameTypes:
@@ -78,7 +78,7 @@ gateway:
       maps: [nor3ctf1, phantq3ctf1_rev, ironwood]
       spec:
         content:
-          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:5
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:6
     - name: urban-terror
       title: Urban Terror 4.3
       bots: false
@@ -210,7 +210,7 @@ gateway:
         game: {fsGame: ufreeze}
         content:
           - image: k3d-quake-kube-registry:5000/quake-kube-ufreeze:1.21
-          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:5
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:6
     - name: defrag
       title: DeFRaG
       # A racing and trick jumping mod, so it has no bots. Its
@@ -306,7 +306,7 @@ gateway:
         game: {fsGame: baseoa}
         content:
           - image: k3d-quake-kube-registry:5000/quake-kube-openarena:0.8.8
-          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:5
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:6
     - name: openarena-ctf
       title: OpenArena CTF
       gameTypes:
@@ -339,4 +339,4 @@ gateway:
         game: {fsGame: baseoa}
         content:
           - image: k3d-quake-kube-registry:5000/quake-kube-openarena:0.8.8
-          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:5
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:6

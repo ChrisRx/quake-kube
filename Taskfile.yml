@@ -89,6 +89,13 @@ tasks:
     cmds:
       - hack/profile.sh {{.PRESET}} content/{{.CONTENT}}/profile.json
 
+  content:sweep:
+    desc: Serve the picker for community maps' missing textures, e.g. task content:sweep PAK0=~/quake3/baseq3/pak0.pk3
+    requires:
+      vars: [PAK0]
+    cmds:
+      - hack/sweep/sweep.sh {{.PAK0}}
+
   dev:
     desc: Run the tilt dev environment, creating the cluster if needed
     deps: [cluster]

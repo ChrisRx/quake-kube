@@ -23,5 +23,7 @@ assets/
 result
 
 .direnv
+# hack/sweep's extracted textures and picker
+.cache/
 hack/k3d/local-ca.crt
 dist/
