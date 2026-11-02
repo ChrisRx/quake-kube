@@ -130,10 +130,23 @@ let
     url = "https://download.tuxfamily.org/openarena/rel/088/openarena-0.8.8.zip";
     hash = "sha256-Wo+vf1tR81GwoWGMBra5il8aZ1jx05gY3iyH3yoLrEo=";
   };
+  # Small texture paks are kept in the repo, since sites hosting them have been
+  # disappearing. Where each came from:
+  #
+  # Gábor Udvari's replacements for missing Quake 3 textures, made for OpenArena
+  # under the GPL. Only its images are used, not its shaders.
+  #   https://download.tuxfamily.org/openarena/files/pk3/missingtextures/z_missing-textures1_v1.pk3
+  #   sha256-SMx3gxVWT98HafzXdiM7LPt4F53A/D6wWKYJ7p3aMtg=
+  missingTextures = ./standins/sources/z_missing-textures1_v1.pk3;
+  # Jack Thompson's GPL placeholders: each of Quake 3's textures as a block of its
+  # average color, for the ones nothing better stands in for yet (see standins/flat.txt).
+  #   https://download.tuxfamily.org/openarena/files/pk3/q3a2oa/z-q3a2oa-textures-v4-080.pk3
+  #   sha256-nx5O3inddc3+QuEr7BDSb0lA02iuSNQ6RwxkPrwF4Ws=
+  flatColors = ./standins/sources/z-q3a2oa-textures-v4-080.pk3;
 in
 stdenvNoCC.mkDerivation {
   pname = "quake3-maps-content";
-  version = "5";
+  version = "6";
   dontUnpack = true;
   nativeBuildInputs = [
     unzip
@@ -154,11 +167,27 @@ stdenvNoCC.mkDerivation {
       $out/baseq3/zz-quake3-maps-openarena-standins.pk3
     # Stand-ins under other names, for textures OpenArena has no same-named
     # replacement for.
-    mkdir -p renamed openarena
+    mkdir -p renamed paks
+    # Flat color placeholders first, so a stand-in under the same name replaces one.
+    grep -v '^#' ${./standins/flat.txt} | while read -r f; do
+      [ -n "$f" ] || continue
+      mkdir -p renamed/$(dirname $f)
+      unzip -q -p ${flatColors} $f > renamed/$f
+    done
+    mkdir -p $out/baseq3/readmes/z-q3a2oa-textures-v4-080
+    unzip -q -j ${flatColors} README.txt GPL.txt -d $out/baseq3/readmes/z-q3a2oa-textures-v4-080
+    cp ${missingTextures} paks/z_missing-textures1_v1.pk3
     grep -v '^#' ${./standins/renamed.txt} | while read -r pak src dest; do
-      [ -f openarena/$pak ] || unzip -q -j ${openarena} openarena-0.8.8/baseoa/$pak -d openarena
+      [ -f paks/$pak ] || unzip -q -j ${openarena} openarena-0.8.8/baseoa/$pak -d paks
       mkdir -p renamed/$(dirname $dest)
-      unzip -q -p openarena/$pak $src > renamed/$dest
+      unzip -q -p paks/$pak $src > renamed/$dest
+    done
+    mkdir -p $out/baseq3/readmes/z_missing-textures1_v1
+    unzip -q -j ${missingTextures} README.txt LICENSE.txt -d $out/baseq3/readmes/z_missing-textures1_v1
+    # Stand-ins made for quake-kube, by the scripts beside them (see standins/generated).
+    (cd ${./standins/generated} && find textures -type f) | while read -r f; do
+      mkdir -p renamed/$(dirname $f)
+      cp ${./standins/generated}/$f renamed/$f
     done
     (cd renamed && zip -q -r -X $out/baseq3/zz-quake3-maps-openarena-standins.pk3 .)
   ''
@@ -167,6 +196,9 @@ stdenvNoCC.mkDerivation {
     cp ${./profile.json} $out/baseq3/quake-kube-profile.json
   '';
   dontFixup = true;
-  # Cached and pinned in CI, since lvlworld's mirror is slow (see push-content.yaml).
-  passthru.downloads = linkFarmFromDrvs "quake3-maps-downloads" (lib.attrValues maps);
+  # What the stand-ins come from, for hack/sweep.
+  passthru.sources = { inherit openarena missingTextures flatColors; };
+  # Cached and pinned in CI (see push-content.yaml), so builds don't depend on lvlworld's
+  # slow mirror, and keep working if a download disappears.
+  passthru.downloads = linkFarmFromDrvs "quake3-maps-downloads" (lib.attrValues maps ++ [ openarena ]);
 }

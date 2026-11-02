@@ -144,7 +144,7 @@ gateway:
       mapsWithoutImages: [q3dm1, q3dm7, q3dm17, q3tourney2]
       spec:
         content:
-          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:5
+          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:6
     - name: quake3-ctf
       title: Quake 3 CTF
       gameTypes:
@@ -153,7 +153,7 @@ gateway:
       maps: [nor3ctf1, phantq3ctf1_rev, ironwood]
       spec:
         content:
-          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:5
+          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:6
     - name: urban-terror
       title: Urban Terror 4.3
       bots: false
@@ -285,7 +285,7 @@ gateway:
         game: {fsGame: ufreeze}
         content:
           - image: ghcr.io/chrisrx/quake-kube-ufreeze:1.21
-          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:5
+          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:6
     - name: defrag
       title: DeFRaG
       # A racing and trick jumping mod, so it has no bots. Its
@@ -381,7 +381,7 @@ gateway:
         game: {fsGame: baseoa}
         content:
           - image: ghcr.io/chrisrx/quake-kube-openarena:0.8.8
-          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:5
+          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:6
     - name: openarena-ctf
       title: OpenArena CTF
       gameTypes:
@@ -414,7 +414,7 @@ gateway:
         game: {fsGame: baseoa}
         content:
           - image: ghcr.io/chrisrx/quake-kube-openarena:0.8.8
-          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:5
+          - image: ghcr.io/chrisrx/quake-kube-quake3-maps:6
   # Whether to offer the presets with content images, which need image
   # volumes: Kubernetes 1.35, or 1.33 with the ImageVolume feature gate. auto
   # offers them on 1.35 and later, true and false always or never do.

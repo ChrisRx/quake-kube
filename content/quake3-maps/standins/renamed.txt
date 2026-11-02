@@ -1,6 +1,8 @@
 # Stand-ins under other names, for the full game's textures that OpenArena
-# has no same-named replacement for: "<OpenArena pak> <its file> <name a map
-# wants>", with OpenArena's closest look-alike.
+# has no same-named replacement for: "<pak> <its file> <name a map wants>",
+# with the closest look-alike. Paks are OpenArena's, or
+# z_missing-textures1_v1.pk3, Gábor Udvari's GPL replacements. Written by
+# hack/sweep/apply.py from decisions.jsonl.
 # zl3tourney1, pjw3tourney1: red cloud sky
 pak4-textures.pk3 textures/skies/intelredclouds.jpg textures/skies/redclouds.jpg
 # pjw3tourney1: the same blocks, renamed
@@ -61,3 +63,22 @@ pak4-textures.pk3 textures/gothic_wall/iron01_e.jpg textures/gothic_wall/iron01_
 pak4-textures.pk3 textures/gothic_trim/pitted_rust3.jpg textures/gothic_wall/iron1_brickrust.jpg
 # ztn3tourney1: gold metal
 pak4-textures.pk3 textures/gothic_wall/gold_brick.jpg textures/gothic_wall/metaltech16gold.jpg
+# q3deck, gas-st: rusty slatted grates
+pak4-textures.pk3 textures/base_support/cable.jpg textures/base_support/grate1_4.jpg
+pak4-textures.pk3 textures/base_support/cable.jpg textures/base_support/grate1_4_small.jpg
+# q3deck, q3gwdm1: riveted metal plate
+pak4-textures.pk3 textures/gothic_trim/metalsupport4i_bit.jpg textures/base_support/metal3_3.jpg
+# q3gwdm2, qxdm4_v2: triangle light's glow
+pak4-textures.pk3 textures/dsi/tlight.blend.tga textures/base_light/trianglelight.blend.tga
+# q3gwdm2, qxdm4_v2: triangle light, the base its glow fits
+pak4-textures.pk3 textures/dsi/tlight.tga textures/base_light/trianglelight.tga
+# jstrq3dm2: red flag, Udi's, with OpenArena's emblem
+z_missing-textures1_v1.pk3 textures/ctf/ctf_redflag.tga textures/ctf/ctf_redflag.tga
+# akutatourney6: black
+pak4-textures.pk3 textures/sfx/blakk.tga textures/sfx/blackness.tga
+# gas-st: the barrel's spinning fire
+pak0.pk3 textures/oa/oldfiar2.jpg models/mapobjects/barrel/barrel2fx.jpg
+# akutatourney3: see-through support truss
+pak4-textures.pk3 textures/base_support/x_support.tga textures/base_support/z_support.tga
+# q3deck: teleporter frame, Udi's
+z_missing-textures1_v1.pk3 textures/ctf/telep.tga textures/ctf/telep.tga

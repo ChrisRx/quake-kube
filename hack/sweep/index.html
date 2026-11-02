@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stand-in Sweep</title>
+<style>
+  :root { --bg: #15130f; --panel: #1f1c17; --line: #3a332c; --text: #e8e2d9; --muted: #a39a8f; --accent: #d9622b; --ok: #6aa84f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px system-ui, sans-serif; }
+  .layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100vh; }
+  aside { border-right: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; height: 100vh; overflow: auto; }
+  aside h1 { font-size: 16px; margin: 0; padding: 16px 16px 4px; }
+  #progress { padding: 0 16px 12px; color: var(--muted); font-size: 13px; }
+  .queue { list-style: none; margin: 0; padding: 0; }
+  .queue li button { all: unset; box-sizing: border-box; display: grid; grid-template-columns: 14px 44px 1fr; gap: 2px 8px; align-items: center; width: 100%; padding: 7px 12px; cursor: pointer; border-top: 1px solid var(--line); }
+  .queue .count { grid-row: span 2; font: 700 15px ui-monospace, monospace; text-align: right; color: var(--text); }
+  .queue .count small { display: block; font: 10px system-ui; color: var(--muted); }
+  .queue li button:hover { background: #29251f; }
+  .queue li.current button { background: #332a22; box-shadow: inset 3px 0 var(--accent); }
+  .queue .mark { color: var(--muted); }
+  .queue .done .mark { color: var(--ok); }
+  .queue .generated .mark { color: #9fc5e8; }
+  .queue .flat .mark, .queue .none .mark { color: var(--accent); }
+  .legend { padding: 0 16px 10px; font-size: 11px; color: var(--muted); line-height: 1.6; }
+  .legend label { display: flex; gap: 6px; align-items: center; margin-top: 4px; color: var(--text); }
+  .noref { width: 144px; height: 144px; display: grid; place-items: center; text-align: center; font-size: 12px; color: var(--muted); border: 1px dashed var(--line); }
+  .queue .qname { font: 12px ui-monospace, monospace; word-break: break-all; }
+  .queue .mark { grid-row: span 2; }
+  .queue .qmeta { grid-column: 3; font-size: 11px; color: var(--muted); }
+  .search { font: 13px system-ui; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 5px 9px; width: 200px; }
+  #more { margin: 16px 0; color: var(--muted); font-size: 13px; text-align: center; }
+  main { padding: 0 20px 64px; min-width: 0; }
+  .head { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 16px 0 12px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .target { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .target figure { margin: 0; }
+  .target img { display: block; border: 1px solid var(--line); max-width: 144px; max-height: 144px; }
+  .target .ref { image-rendering: pixelated; }
+  figcaption { font: 11px ui-monospace, monospace; color: var(--muted); margin-top: 4px; }
+  .info { min-width: 200px; flex: 1 1 220px; }
+  .info h2 { margin: 0 0 6px; font: 600 15px ui-monospace, monospace; word-break: break-all; }
+  .info p { margin: 0 0 4px; color: var(--muted); font-size: 13px; }
+  .submit { display: grid; gap: 8px; flex: 1 1 320px; }
+  .choice { display: flex; gap: 10px; align-items: center; min-height: 72px; }
+  .choice img { width: 72px; height: 72px; object-fit: cover; }
+  .choice span { font: 12px ui-monospace, monospace; word-break: break-all; }
+  textarea { font: 13px system-ui; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 6px 8px; min-height: 44px; resize: vertical; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn { font: 600 13px system-ui; color: #fff; background: var(--accent); border: 0; padding: 8px 14px; cursor: pointer; }
+  .btn.secondary { background: none; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  #status { font-size: 13px; color: var(--muted); }
+  .previous { font-size: 12px; color: var(--muted); }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .filters button { font: 13px system-ui; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 5px 11px; cursor: pointer; }
+  .filters button[aria-pressed="true"] { border-color: var(--accent); color: #fff; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); padding: 8px; }
+  .card.chosen { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .card img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #000; display: block; }
+  .name { font: 12px ui-monospace, monospace; margin-top: 6px; word-break: break-all; }
+  .meta { font: 11px ui-monospace, monospace; color: var(--muted); margin-top: 2px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .tag { font: 10px ui-monospace, monospace; padding: 1px 5px; border: 1px solid var(--line); color: var(--muted); }
+  .card .pick { margin-top: 8px; width: 100%; font: 600 12px system-ui; color: var(--text); background: none; border: 1px solid var(--line); padding: 5px; cursor: pointer; }
+  .card .pick:hover, .card.chosen .pick { border-color: var(--accent); color: #fff; background: var(--accent); }
+  :root { --shot-bg: repeating-conic-gradient(#464646 0 25%, #2d2d2d 0 50%) 0 0 / 16px 16px; }
+  :root[data-bg="black"] { --shot-bg: #000; }
+  :root[data-bg="white"] { --shot-bg: #fff; }
+  :root[data-bg="gray"] { --shot-bg: #808080; }
+  .card img, .target img, .choice img, .zoom img { background: var(--shot-bg); }
+  .card img { cursor: zoom-in; }
+  .bg { display: flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); margin-left: auto; }
+  .bg button { font: 12px system-ui; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 3px 8px; cursor: pointer; }
+  .bg button[aria-pressed="true"] { border-color: var(--accent); color: #fff; }
+  .zoom { border: 1px solid var(--line); background: var(--bg); color: var(--text); padding: 16px; max-width: min(1120px, 96vw); }
+  .zoom::backdrop { background: rgba(0, 0, 0, 0.75); }
+  .zoom .pair { display: flex; gap: 16px; flex-wrap: wrap; }
+  .zoom figure { margin: 0; }
+  .zoom img { display: block; max-width: min(512px, 44vw); max-height: 70vh; image-rendering: auto; border: 1px solid var(--line); }
+  .zoom .ref-full { image-rendering: pixelated; width: min(512px, 44vw); height: auto; }
+  .zoom .row { margin-top: 12px; justify-content: flex-end; }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } aside { position: static; height: auto; max-height: 40vh; } }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <h1>Stand-in sweep</h1>
+    <div id="progress"></div>
+    <div class="legend">
+      <span>✓ picked · ★ generated · ▪ flat color placeholder · – no stand-in · · open</span>
+      <label><input type="checkbox" id="open-only"> Only open, placeholders and no stand-in</label>
+    </div>
+    <ul class="queue" id="queue"></ul>
+  </aside>
+  <main>
+    <div class="head">
+      <div class="target">
+        <figure><img class="ref" id="ref" alt="" style="cursor: zoom-in"><figcaption>original</figcaption></figure>
+        <figure><img id="ref-tiled" alt=""><figcaption>tiled</figcaption></figure>
+        <div class="info">
+          <h2 id="t-name"></h2>
+          <p id="t-size"></p>
+          <p id="t-maps"></p>
+          <p id="t-shaders"></p>
+          <p class="previous" id="t-previous"></p>
+        </div>
+        <form class="submit" id="submit">
+          <div class="choice" id="choice"></div>
+          <textarea id="note" placeholder="Note, optional"></textarea>
+          <div class="row">
+            <button type="submit" class="btn" id="send" disabled>Submit pick</button>
+            <button type="button" class="btn secondary" id="flat">Use flat color</button>
+            <button type="button" class="btn secondary" id="skip">No stand-in</button>
+            <span id="status" aria-live="polite"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="filters" id="filters"></div>
+    <dialog class="zoom" id="zoom">
+      <div class="pair">
+        <figure><img class="ref-full" id="zoom-ref" alt=""><figcaption id="zoom-ref-cap"></figcaption></figure>
+        <figure><img id="zoom-cand" alt=""><figcaption id="zoom-cand-cap"></figcaption></figure>
+      </div>
+      <div class="row">
+        <button type="button" class="btn secondary" id="zoom-pick">Pick as replacement</button>
+        <button type="button" class="btn" id="zoom-close">Close</button>
+      </div>
+    </dialog>
+    <div class="grid" id="grid"></div>
+    <div id="more"></div>
+  </main>
+</div>
+<script src="data.js"></script>
+<script>
+  const SOURCES = ["all", "everything by score", "texture score", "color weighted", "layout", "similar name", "other shape"];
+  const PAGE = 120;
+  let shown = PAGE;
+  let query = "";
+  const decided = new Map();
+  let index = 0;
+  let filter = "all";
+  let chosen = null;
+
+  const short = (name) => name.replace(/^textures\//, "");
+  // Picked and generated stand-ins are settled. Placeholders and textures without a stand-in
+  // are worth another look, like open ones.
+  const MARKS = { pick: "✓", generated: "★", flat: "▪", none: "–" };
+  const settled = (t) => ["pick", "generated"].includes(decided.get(t.name)?.kind);
+  let openOnly = false;
+  document.getElementById("open-only").addEventListener("change", (e) => {
+    openOnly = e.target.checked;
+    renderQueue();
+  });
+
+  function renderQueue() {
+    const done = TARGETS.filter(settled).length;
+    const left = TARGETS.filter((t) => !settled(t)).reduce((n, t) => n + t.surfaces, 0);
+    document.getElementById("progress").textContent = `${done} of ${TARGETS.length} settled · ${left} surfaces left · most used first`;
+    document.getElementById("queue").replaceChildren(
+      ...TARGETS.map((t, i) => [t, i]).filter(([t, i]) => !openOnly || !settled(t) || i === index).map(([t, i]) => {
+        const d = decided.get(t.name);
+        const li = document.createElement("li");
+        li.className = (i === index ? "current " : "") + (d ? { pick: "done", generated: "generated", flat: "flat", none: "none" }[d.kind] : "");
+        const b = document.createElement("button");
+        b.innerHTML = `<span class="mark"></span><span class="count"></span><span class="qname"></span><span class="qmeta"></span>`;
+        b.querySelector(".mark").textContent = d ? MARKS[d.kind] : "·";
+        b.querySelector(".qname").textContent = short(t.name);
+        const maps = Object.keys(t.maps);
+        b.querySelector(".count").innerHTML = `${t.surfaces}<small>surfaces</small>`;
+        b.querySelector(".qmeta").textContent = `${maps.length} ${maps.length === 1 ? "map" : "maps"}: ${maps.join(", ")}`;
+        b.addEventListener("click", () => show(i));
+        li.append(b);
+        return li;
+      }),
+    );
+    document.querySelector(".queue .current")?.scrollIntoView({ block: "nearest" });
+  }
+
+  function show(i) {
+    index = i;
+    chosen = null;
+    filter = "all";
+    shown = PAGE;
+    query = "";
+    const t = TARGETS[i];
+    for (const id of ["ref", "ref-tiled"]) {
+      const img = document.getElementById(id);
+      img.hidden = !t.img;
+      img.src = (id === "ref" ? t.img : t.tiled) || "";
+    }
+    let noref = document.querySelector(".noref");
+    if (!t.img && !noref) {
+      noref = Object.assign(document.createElement("div"), { className: "noref", textContent: "No retail reference. Candidates are in name order." });
+      document.getElementById("ref").after(noref);
+    } else if (t.img && noref) {
+      noref.remove();
+    }
+    document.getElementById("flat").hidden = !t.flat;
+    document.getElementById("t-name").textContent = short(t.name);
+    document.getElementById("t-size").textContent = `${t.size}${t.alpha ? " · has transparency" : ""}`;
+    document.getElementById("t-maps").textContent =
+      "Used on " + Object.entries(t.maps).map(([m, n]) => `${m} (${n})`).join(", ");
+    const shaders = t.shaders.filter((s) => s.toLowerCase() !== t.name.toLowerCase());
+    document.getElementById("t-shaders").textContent = shaders.length ? `In shader ${shaders.join(", ")}` : "";
+    const d = decided.get(t.name);
+    const what = d && { pick: `picked ${d.pick}`, generated: `generated (${d.pick})`, flat: "flat color placeholder", none: "no stand-in" }[d.kind];
+    document.getElementById("t-previous").textContent = d
+      ? `Decided: ${what}${d.note ? `. ${d.note.replace(/\.$/, "")}` : ""}. Deciding again replaces it.`
+      : "";
+    document.getElementById("note").value = "";
+    document.getElementById("status").textContent = "";
+    renderFilters();
+    renderChoice();
+    renderGrid();
+    renderQueue();
+    window.scrollTo(0, 0);
+  }
+
+  // The background behind transparent parts, remembered in this browser.
+  const BGS = ["checker", "black", "gray", "white"];
+  let bg = "checker";
+  try { bg = localStorage.getItem("sweep-bg") || "checker"; } catch {}
+  document.documentElement.dataset.bg = bg;
+  function bgControl() {
+    const wrap = Object.assign(document.createElement("span"), { className: "bg", textContent: "Background " });
+    for (const b of BGS) {
+      const btn = Object.assign(document.createElement("button"), { type: "button", textContent: b });
+      btn.setAttribute("aria-pressed", String(b === bg));
+      btn.addEventListener("click", () => {
+        bg = b;
+        document.documentElement.dataset.bg = b;
+        try { localStorage.setItem("sweep-bg", b); } catch {}
+        renderFilters();
+      });
+      wrap.append(btn);
+    }
+    return wrap;
+  }
+
+  // A large, untiled look at a candidate beside the original.
+  const zoom = document.getElementById("zoom");
+  let zoomKey = null;
+  const fullOf = (path) => path.replace(/\.png$/, "_full.png");
+  function openZoom(key) {
+    const t = TARGETS[index];
+    const c = CANDIDATES[key];
+    zoomKey = key;
+    document.getElementById("zoom-ref").hidden = !t.tiled;
+    document.getElementById("zoom-ref").src = t.tiled ? fullOf(t.tiled) : "";
+    document.getElementById("zoom-ref-cap").textContent = `original ${short(t.name)}, ${t.size}`;
+    document.getElementById("zoom-cand").src = fullOf(c.img);
+    document.getElementById("zoom-cand-cap").textContent = `${short(c.name)}, ${c.pak}, ${c.size}`;
+    document.getElementById("zoom-pick").textContent = chosen === key ? "Picked" : "Pick as replacement";
+    zoom.showModal();
+  }
+  document.getElementById("zoom-close").addEventListener("click", () => zoom.close());
+  zoom.addEventListener("click", (e) => e.target === zoom && zoom.close());
+  document.getElementById("zoom-pick").addEventListener("click", () => {
+    chosen = zoomKey;
+    renderChoice();
+    renderGrid();
+    zoom.close();
+  });
+
+  function renderFilters() {
+    const t = TARGETS[index];
+    const el = document.getElementById("filters");
+    el.replaceChildren(
+      ...SOURCES.map((s) => {
+        const n = s === "all" || s === "everything by score" ? t.candidates.length : t.candidates.filter((c) => c.sources.includes(s)).length;
+        const b = document.createElement("button");
+        b.textContent = `${s} (${n})`;
+        b.setAttribute("aria-pressed", String(s === filter));
+        b.addEventListener("click", () => {
+          filter = s;
+          shown = PAGE;
+          renderFilters();
+          renderGrid();
+        });
+        return b;
+      }),
+      searchBox(),
+      bgControl(),
+    );
+  }
+
+  function searchBox() {
+    const input = Object.assign(document.createElement("input"), { type: "search", className: "search", placeholder: "Search names", value: query });
+    input.addEventListener("input", () => {
+      query = input.value.trim().toLowerCase();
+      shown = PAGE;
+      renderGrid();
+    });
+    return input;
+  }
+
+  function visible() {
+    const t = TARGETS[index];
+    let list = t.candidates;
+    if (filter === "everything by score") {
+      list = [...list].sort((a, b) => a.scores.weighted - b.scores.weighted);
+    } else if (filter !== "all") {
+      list = list.filter((c) => c.sources.includes(filter));
+    }
+    if (query) list = list.filter((c) => CANDIDATES[c.key].name.toLowerCase().includes(query));
+    return list;
+  }
+
+  function renderChoice() {
+    const choice = document.getElementById("choice");
+    if (chosen) {
+      const c = CANDIDATES[chosen];
+      choice.replaceChildren(
+        Object.assign(document.createElement("img"), { src: c.img, alt: "" }),
+        Object.assign(document.createElement("span"), { textContent: `${short(c.name)} (${c.pak}, ${c.size})` }),
+      );
+    } else {
+      choice.replaceChildren(Object.assign(document.createElement("span"), { textContent: "Pick a replacement below." }));
+    }
+    document.getElementById("send").disabled = !chosen;
+  }
+
+  function renderGrid() {
+    const list = visible();
+    document.getElementById("more").textContent =
+      list.length > shown ? `Showing ${shown} of ${list.length}, scroll for more` : `${list.length} shown`;
+    document.getElementById("grid").replaceChildren(
+      ...list
+        .slice(0, shown)
+        .map((entry) => {
+          const c = CANDIDATES[entry.key];
+          const card = document.createElement("div");
+          card.className = "card" + (chosen === entry.key ? " chosen" : "");
+          card.innerHTML = `<img loading="lazy" alt=""><div class="name"></div><div class="meta"></div><div class="tags"></div><button type="button" class="pick"></button>`;
+          card.querySelector("img").src = c.img;
+          card.querySelector("img").addEventListener("click", () => openZoom(entry.key));
+          card.querySelector(".name").textContent = short(c.name);
+          const scores = Object.entries(entry.scores).map(([k, v]) => `${k} ${v}`).join(" · ");
+          card.querySelector(".meta").textContent = `${c.pak} · ${c.size} · ${scores}`;
+          card.querySelector(".tags").append(
+            ...entry.sources.map((s) => Object.assign(document.createElement("span"), { className: "tag", textContent: s })),
+          );
+          const pick = card.querySelector(".pick");
+          pick.textContent = chosen === entry.key ? "Picked" : "Pick as replacement";
+          pick.addEventListener("click", () => {
+            chosen = chosen === entry.key ? null : entry.key;
+            renderChoice();
+            renderGrid();
+          });
+          return card;
+        }),
+    );
+  }
+
+  async function send(kind, pick = "") {
+    const t = TARGETS[index];
+    const status = document.getElementById("status");
+    const note = document.getElementById("note").value;
+    try {
+      const r = await fetch("/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: t.name, kind, pick, note }),
+      });
+      if (!r.ok) throw new Error(r.status);
+    } catch (err) {
+      status.textContent = `Sending failed (${err.message}). Is the picker server running?`;
+      return;
+    }
+    decided.set(t.name, { kind, pick, note });
+    const next = TARGETS.findIndex((x, i) => i > index && !settled(x));
+    const any = TARGETS.findIndex((x) => !settled(x));
+    if (next >= 0 || any >= 0) show(next >= 0 ? next : any);
+    else {
+      renderQueue();
+      status.textContent = "Everything is settled.";
+    }
+  }
+
+  document.getElementById("submit").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!chosen) return;
+    const c = CANDIDATES[chosen];
+    const quarter = chosen.includes("#q") ? ` quarter ${chosen.slice(-1)}` : "";
+    send("pick", `${c.pak}.pk3 ${c.file}${quarter}`);
+  });
+  document.getElementById("skip").addEventListener("click", () => send("none"));
+  document.getElementById("flat").addEventListener("click", () => send("flat", TARGETS[index].flat));
+
+  new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting) && visible().length > shown) {
+      shown += PAGE;
+      renderGrid();
+    }
+  }, { rootMargin: "800px" }).observe(document.getElementById("more"));
+
+  async function load() {
+    try {
+      const r = await fetch("decisions.jsonl", { cache: "no-store" });
+      if (r.ok) {
+        for (const line of (await r.text()).split("\n")) {
+          if (!line.trim()) continue;
+          const p = JSON.parse(line);
+          decided.set(p.target, { kind: p.kind, pick: p.pick, note: p.note });
+        }
+      }
+    } catch {}
+    const first = TARGETS.findIndex((t) => !settled(t));
+    show(first >= 0 ? first : 0);
+  }
+  load();
+</script>
+</body>
+</html>
