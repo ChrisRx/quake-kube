@@ -182,6 +182,29 @@ gateway:
 These are in the chart's default presets, with more of their game types and
 maps, alongside the Quake 3 demo. Setting `gateway.presets` replaces them.
 
+Servers play a rotation of the preset's maps, picked in the web app. The picker
+offers the maps made for the chosen game type first, from each map's arena file
+(e.g. `scripts/q3dm17.arena`). It knows Quake 3's game types; for a mod's, set
+`arena` to the type its maps' arena files use, e.g. `ctf` or `team`. Presets can
+also suggest lists of maps to pick from with `mapLists`:
+
+```yaml
+gateway:
+  presets:
+    - name: openarena-ctf
+      title: OpenArena CTF
+      gameTypes:
+        - {name: Capture The Flag, type: 4, arena: ctf}
+        - {name: One Flag CTF, type: 5, arena: oneflag}
+      maps: [oasago2, ps37ctf2, oa_ctf4ish]
+      mapLists:
+        - name: Classics
+          maps: [oasago2, ps37ctf2]
+```
+
+People can save their own lists in their browser too, and share a rotation with
+a link from the create dialog.
+
 Presets with content images need image volumes, so on clusters older than
 Kubernetes 1.35 the chart leaves them out. Set `gateway.imagePresets` to `true`
 on 1.33 or 1.34 with the `ImageVolume` feature gate, or to `false` to never

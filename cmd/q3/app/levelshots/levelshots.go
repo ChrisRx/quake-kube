@@ -33,9 +33,10 @@ const width, height = 256, 192
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "levelshots",
-		Short: "serve thumbnails of the levelshots of a game's maps",
+		Short: "serve thumbnails and details of a game's maps",
 		Long: `Downloads the content in a server configuration, like fetch, and serves a thumbnail
-of each map's levelshot as JSON at /levelshots until it's been fetched once. The gateway
+of each map's levelshot as JSON at /levelshots, with what its arena file says
+about it, until it's been fetched once. The gateway
 runs it for each game it offers, so its menus can show every game's maps.`,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
@@ -57,9 +58,10 @@ runs it for each game it offers, so its menus can show every game's maps.`,
 
 			// Health checks can tell it's working while the content downloads.
 			var (
-				mu    sync.Mutex
-				shots map[string][]byte
-				done  = make(chan struct{})
+				mu     sync.Mutex
+				shots  map[string][]byte
+				arenas map[string]quakecontent.Arena
+				done   = make(chan struct{})
 			)
 			mux := http.NewServeMux()
 			mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +80,7 @@ runs it for each game it offers, so its menus can show every game's maps.`,
 				}
 				w.Header().Set("Content-Type", "application/json")
 				// []byte is encoded as base64.
-				if err := json.NewEncoder(w).Encode(map[string]any{"maps": shots}); err == nil {
+				if err := json.NewEncoder(w).Encode(map[string]any{"maps": shots, "arenas": arenas}); err == nil {
 					select {
 					case <-done:
 					default:
@@ -117,10 +119,22 @@ runs it for each game it offers, so its menus can show every game's maps.`,
 				}
 				result[name] = data
 			}
+			// What each map's arena file says about it, like its title and game types.
+			all, err := quakecontent.ReadArenas(opts.AssetsDir)
+			if err != nil {
+				slog.Warn("reading arena files failed", slog.Any("error", err))
+			}
+			found := make(map[string]quakecontent.Arena)
+			for _, name := range opts.Maps {
+				if arena, ok := all[strings.ToLower(name)]; ok {
+					found[strings.ToLower(name)] = arena
+				}
+			}
 			mu.Lock()
 			shots = result
+			arenas = found
 			mu.Unlock()
-			fmt.Printf("Serving %d of %d levelshots on %s\n", len(result), len(opts.Maps), opts.Addr)
+			fmt.Printf("Serving %d of %d levelshots and %d arenas on %s\n", len(result), len(opts.Maps), len(found), opts.Addr)
 
 			select {
 			case <-done:

@@ -113,3 +113,42 @@ func TestThumbnail(t *testing.T) {
 		t.Errorf("thumbnail is %dx%d, want 4x3", b.Dx(), b.Dy())
 	}
 }
+
+func TestParseArenas(t *testing.T) {
+	arenas := parseArenas(`// The demo's maps.
+{
+map "q3dm17"
+longname "The Longest Yard"
+fraglimit 20
+type "ffa tourney"
+}
+{ map "Hydra" longname "Hydra" type "ffa tourney team" }
+{ longname "no map" }`)
+	if got := arenas["q3dm17"]; got.Title != "The Longest Yard" || len(got.Types) != 2 || got.Types[1] != "tourney" {
+		t.Errorf("q3dm17: %+v", got)
+	}
+	if got := arenas["hydra"]; len(got.Types) != 3 || got.Types[2] != "team" {
+		t.Errorf("hydra: %+v", got)
+	}
+	if len(arenas) != 2 {
+		t.Errorf("parsed %d arenas, want 2", len(arenas))
+	}
+}
+
+func TestReadArenas(t *testing.T) {
+	dir := t.TempDir()
+	writePakFiles(t, filepath.Join(dir, "baseq3", "pak0.pk3"), map[string][]byte{
+		"scripts/arenas.txt": []byte(`{ map "q3dm7" longname "Temple of Retribution" type "ffa team" }`),
+	})
+	// A later pak's arena takes precedence.
+	writePakFiles(t, filepath.Join(dir, "baseq3", "z-maps.pk3"), map[string][]byte{
+		"scripts/q3dm7.arena": []byte(`{ map "q3dm7" longname "Override" type "tourney" }`),
+	})
+	arenas, err := ReadArenas(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := arenas["q3dm7"]; got.Title != "Override" {
+		t.Errorf("q3dm7: %+v", got)
+	}
+}

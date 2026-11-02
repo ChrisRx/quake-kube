@@ -166,10 +166,12 @@ start. Kubernetes deletes their pods and Services with them.
 
 ### Levelshots
 
-The web app shows a picture of each map, its levelshot, which comes from the
-map's pak. For maps of games no server is running, the gateway runs a pod for
+Servers play a rotation of maps, moving to the next one after each match. The web
+app shows a picture of each map, its levelshot, which comes from the map's pak,
+with its title and the game types it's made for, from its arena file. For maps of games no server is running, the gateway runs a pod for
 each preset that assembles the preset's content like a game server's pod, with
-`q3 levelshots` serving thumbnails of the maps' levelshots. The gateway keeps
+`q3 levelshots` serving thumbnails of the maps' levelshots and what their arena
+files say about them. The gateway keeps
 them in a ConfigMap, `quake-kube-levelshots-<preset>`, and only makes them again
 when the preset's content or maps change.
 
