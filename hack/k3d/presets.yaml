@@ -8,25 +8,71 @@ gateway:
         - {name: Free For All, type: FreeForAll}
         - {name: Tournament, type: Tournament}
         - {name: Team Deathmatch, type: TeamDeathmatch}
-        - {name: Capture The Flag, type: CaptureTheFlag}
       maps:
         # The demo's, which every server has.
         - q3dm1
         - q3dm7
         - q3dm17
         - q3tourney2
-        # Community maps from lvlworld.
+        # Community maps from lvlworld. See the docs to ask for one to be removed.
         - lun3dm5
         - q3deck
         - lsdm1
         - estatica
         - rpg3dm2
         - chiropterata
+        - pukka3tourney2
+        - pukka3tourney5
+        - pukka3dm1
+        - pukka3tourney7
+        - akutadm1
+        - akutadm2
+        - akutadm3
+        - akutatourney5
+        - akutatourney6
+        - akutatourney8
+        - bst3dm1
+        - ct3tourney2
+        - gas-st
+        - jstrq3dm2
+        - katdm3
+        - wintergames
+        - zl3tourney1
+        - pjw3tourney1
+        - hydra
+        - goldleaf
+        - q3gwdm2
+        - phantq3dm4
+        - phantq3dm3_rev
+        - pom_bots
+        - pasdm1
+        - gs3dm5
+        - jof3dm2
+        - qxdm4_v2
+        - ct3dm5
+        - revenga
+        - akutatourney3
+        - akutatourney4
+        - shad3dm2
+        - ztn3tourney1
+        - phantq3dm6_mc
+        - q3gwdm1
+        - moteof_final
+        - trespass
       # Without image volumes, only the demo's maps are offered.
       mapsWithoutImages: [q3dm1, q3dm7, q3dm17, q3tourney2]
       spec:
         content:
-          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:1
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:5
+    - name: quake3-ctf
+      title: Quake 3 CTF
+      gameTypes:
+        - {name: Capture The Flag, type: CaptureTheFlag}
+      # Community maps with flags.
+      maps: [nor3ctf1, phantq3ctf1_rev, ironwood]
+      spec:
+        content:
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:5
     - name: urban-terror
       title: Urban Terror 4.3
       bots: false
@@ -116,11 +162,49 @@ gateway:
         - estatica
         - rpg3dm2
         - chiropterata
+        - pukka3tourney2
+        - pukka3tourney5
+        - pukka3dm1
+        - pukka3tourney7
+        - akutadm1
+        - akutadm2
+        - akutadm3
+        - akutatourney5
+        - akutatourney6
+        - akutatourney8
+        - bst3dm1
+        - ct3tourney2
+        - gas-st
+        - jstrq3dm2
+        - katdm3
+        - wintergames
+        - zl3tourney1
+        - pjw3tourney1
+        - hydra
+        - goldleaf
+        - q3gwdm2
+        - phantq3dm4
+        - phantq3dm3_rev
+        - pom_bots
+        - pasdm1
+        - gs3dm5
+        - jof3dm2
+        - qxdm4_v2
+        - ct3dm5
+        - revenga
+        - akutatourney3
+        - akutatourney4
+        - shad3dm2
+        - ztn3tourney1
+        - phantq3dm6_mc
+        - q3gwdm1
+        - moteof_final
+        - trespass
       spec:
         game: {fsGame: ufreeze}
         content:
           - image: k3d-quake-kube-registry:5000/quake-kube-ufreeze:1.21
-          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:1
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:5
     - name: defrag
       title: DeFRaG
       # A racing and trick jumping mod, so it has no bots. Its
@@ -174,11 +258,49 @@ gateway:
         - estatica
         - rpg3dm2
         - chiropterata
+        - pukka3tourney2
+        - pukka3tourney5
+        - pukka3dm1
+        - pukka3tourney7
+        - akutadm1
+        - akutadm2
+        - akutadm3
+        - akutatourney5
+        - akutatourney6
+        - akutatourney8
+        - bst3dm1
+        - ct3tourney2
+        - gas-st
+        - jstrq3dm2
+        - katdm3
+        - wintergames
+        - zl3tourney1
+        - pjw3tourney1
+        - hydra
+        - goldleaf
+        - q3gwdm2
+        - phantq3dm4
+        - phantq3dm3_rev
+        - pom_bots
+        - pasdm1
+        - gs3dm5
+        - jof3dm2
+        - qxdm4_v2
+        - ct3dm5
+        - revenga
+        - akutatourney3
+        - akutatourney4
+        - shad3dm2
+        - ztn3tourney1
+        - phantq3dm6_mc
+        - q3gwdm1
+        - moteof_final
+        - trespass
       spec:
         game: {fsGame: baseoa}
         content:
           - image: k3d-quake-kube-registry:5000/quake-kube-openarena:0.8.8
-          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:1
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:5
     - name: openarena-ctf
       title: OpenArena CTF
       gameTypes:
@@ -203,7 +325,12 @@ gateway:
         - oacmpctf3
         - oacmpdm6
         - oacmpdm10
+        # Quake 3 community maps with flags.
+        - nor3ctf1
+        - phantq3ctf1_rev
+        - ironwood
       spec:
         game: {fsGame: baseoa}
         content:
           - image: k3d-quake-kube-registry:5000/quake-kube-openarena:0.8.8
+          - image: k3d-quake-kube-registry:5000/quake-kube-quake3-maps:5
