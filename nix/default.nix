@@ -102,7 +102,7 @@ let
     };
 in
 {
-  inherit pkgs images;
+  inherit pkgs images content;
 
   packages = {
     default = native.q3;

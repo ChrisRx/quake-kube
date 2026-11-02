@@ -9,6 +9,11 @@ on:
     paths:
       - 'content/**'
   workflow_dispatch:
+    inputs:
+      force:
+        description: Push images even if their version is already published
+        type: boolean
+        default: false
 
 jobs:
   multiarch:
@@ -23,16 +28,66 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v23
-      # Only reads the cache: content is too large to keep in it.
+      # Only reads the cache: content is too large to keep in it. The downloads
+      # some content lists are pushed below.
       - uses: cachix/cachix-action@v16
         with:
           name: quake-kube
           skipPush: true
+      # Tags aren't overwritten, so an image whose version is already published
+      # is skipped, e.g. when another content directory changed.
+      - name: Check if published
+        id: published
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          version=$(nix eval --raw .#content.${{ matrix.image }}.version)
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          if [ "${{ inputs.force }}" != true ] &&
+            docker manifest inspect "ghcr.io/chrisrx/quake-kube-${{ matrix.image }}:$version" >/dev/null 2>&1; then
+            echo "Version $version is already published"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Downloads that are slow to fetch, e.g. maps from lvlworld's mirror, are a
+      # link farm of them, content's downloads. They're pushed to the cache even if
+      # the build fails, so a rerun doesn't fetch them again.
+      - name: Download
+        id: download
+        if: steps.published.outputs.skip != 'true'
+        run: |
+          nix eval --json .#content.${{ matrix.image }} --apply '
+            c: if c ? downloads then {
+              drv = c.downloads.drvPath;
+              out = c.downloads.outPath;
+              paths = builtins.attrValues c.downloads.entries;
+            } else null' > downloads.json
+          if [ "$(cat downloads.json)" != null ]; then
+            nix build --keep-going --no-link "$(jq -r .drv downloads.json)^out"
+          fi
       # Ubuntu 24.04 only allows unprivileged user namespaces for programs with an
       # AppArmor profile, which buildah from the nix store doesn't have. flocken
       # pushes the images with rootless buildah, which needs one.
       - name: Allow user namespaces
+        if: steps.published.outputs.skip != 'true'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - run: nix run --impure .#manifests.${{ matrix.image }}
+      - name: Build and push
+        if: steps.published.outputs.skip != 'true'
+        run: nix run --impure .#manifests.${{ matrix.image }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # When they all downloaded, the link farm is pinned, so the cache keeps them.
+      # Only its latest revision is kept, so content that's taken out is unpinned.
+      - name: Cache downloads
+        if: always() && steps.download.outcome != 'skipped'
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          [ "$(cat downloads.json)" != null ] || exit 0
+          jq -r '.paths[]' downloads.json | while read -r path; do
+            [ -e "$path" ] && echo "$path"
+          done | xargs -r cachix push quake-kube
+          out=$(jq -r .out downloads.json)
+          if [ -e "$out" ]; then
+            cachix push quake-kube "$out"
+            cachix pin quake-kube ${{ matrix.image }}-downloads "$out" --keep-revisions 1
+          fi

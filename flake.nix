@@ -69,8 +69,8 @@
 
         legacyPackages = {
           # Images for each platform, e.g. images.aarch64.server, and their multi-arch
-          # manifests for publishing.
-          inherit (quakeKube) images manifests;
+          # manifests for publishing. CI reads the content's versions and downloads.
+          inherit (quakeKube) images manifests content;
         };
 
         devShells.default = pkgs.mkShell {
