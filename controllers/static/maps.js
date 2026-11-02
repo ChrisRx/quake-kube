@@ -31,6 +31,7 @@
       color: var(--muted, #a39a8f); background: none; border: 0; cursor: pointer; text-decoration: underline;
     }
     :is(#pause, html) .map-picker button.mp-link:hover { color: var(--text, #e8e2d9); background: none; }
+    .map-picker .mp-pending { margin: 0; font: 12px ui-monospace, monospace; color: var(--muted, #a39a8f); }
     .map-picker .mp-status {
       display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline;
       font: 12px ui-monospace, monospace; color: var(--muted, #a39a8f);
@@ -135,8 +136,14 @@
         }
       });
 
+      this.pending = el("p", {
+        className: "mp-pending",
+        hidden: true,
+        textContent: "Map pictures and names are still being made. They'll show up here in a minute or two.",
+      });
+
       this.grid = el("div", { className: "mp-grid", role: "group", ariaLabel: "Maps" });
-      container.append(el("div", { className: "map-picker" }, bar, this.status, this.saveRow, this.grid));
+      container.append(el("div", { className: "map-picker" }, bar, this.status, this.saveRow, this.pending, this.grid));
 
       this.search.addEventListener("input", () => this.render());
       this.filterBox.addEventListener("change", () => this.render());
@@ -153,6 +160,7 @@
       this.tiles = new Map();
       this.search.value = "";
       this.showSave(false);
+      this.pending.hidden = preset.levelshots !== false;
       this.grid.replaceChildren(
         ...preset.maps.map((name) => {
           const info = { ...preset.mapInfo?.[name.toLowerCase()] };
@@ -181,6 +189,16 @@
       this.setGameType(gameType, false);
       this.set(maps.filter((m) => preset.maps.includes(m)));
       this.renderLists();
+    }
+
+    // Takes in a newer copy of the shown preset, once its map pictures and names are ready,
+    // keeping what's picked.
+    update(preset) {
+      if (this.preset?.name !== preset.name || this.preset.levelshots || !preset.levelshots) return;
+      const query = this.search.value;
+      this.setPreset(preset, { maps: this.selected, gameType: this.gameTypeName });
+      this.search.value = query;
+      this.render();
     }
 
     // Offers the maps made for a game type first, by the type its maps' arena files name.

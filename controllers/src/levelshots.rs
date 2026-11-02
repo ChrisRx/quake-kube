@@ -92,6 +92,24 @@ impl Levelshots {
         cache.get(preset)?.shots.get(&map.to_lowercase()).cloned()
     }
 
+    /// Whether the preset's thumbnails are ready.
+    pub fn ready(&self, preset: &str) -> bool {
+        self.cache.read().unwrap().contains_key(preset)
+    }
+
+    /// A map's long name from its arena file, e.g. "The Longest Yard", once known.
+    pub fn title(&self, preset: &str, map: &str) -> Option<String> {
+        let cache = self.cache.read().unwrap();
+        let title = cache
+            .get(preset)?
+            .arenas
+            .get(&map.to_lowercase())?
+            .title
+            .clone()?;
+        // Some arena files just repeat the map's name.
+        (!title.eq_ignore_ascii_case(map)).then_some(title)
+    }
+
     /// What the preset's maps' arena files say about them, by lowercase map name, once
     /// they're known.
     pub fn arenas(&self, preset: &str) -> BTreeMap<String, Arena> {
