@@ -301,6 +301,10 @@ func (s *Server) HardStop() {
 func (s *Server) apply(cfg *Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if cfg.Generation < s.applied.Generation {
+		log.Printf("ignoring config for generation %d, older than the applied %d\n", cfg.Generation, s.applied.Generation)
+		return nil
+	}
 	data, err := cfg.Marshal()
 	if err != nil {
 		return err
@@ -311,6 +315,7 @@ func (s *Server) apply(cfg *Config) error {
 	}
 	if bytes.Equal(data, current) {
 		// E.g. the config file catching up with what the gateway sent.
+		s.applied = cfg
 		return nil
 	}
 	if err := s.writeServerConfig(data); err != nil {

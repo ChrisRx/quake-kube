@@ -49,6 +49,10 @@ type Config struct {
 	Cvars map[string]string `json:"cvars"`
 	// Content is downloaded by q3 fetch before the server starts.
 	Content []content.Source `json:"content"`
+	// Generation is the QuakeServer's generation the config was rendered for. A config older
+	// than the applied one is ignored, e.g. the file catching up after the gateway sent a
+	// newer one.
+	Generation int64 `json:"generation"`
 
 	Maps
 }

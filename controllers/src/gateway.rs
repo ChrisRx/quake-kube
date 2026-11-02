@@ -995,7 +995,8 @@ async fn update_server(
     updated
         .labels_mut()
         .insert(PRESET_LABEL.to_owned(), preset.name.clone());
-    Api::<QuakeServer>::namespaced(gateway.client.clone(), &namespace)
+    // With its new generation, which the config sent to the server is stamped with.
+    let updated = Api::<QuakeServer>::namespaced(gateway.client.clone(), &namespace)
         .replace(&name, &PostParams::default(), &updated)
         .await
         .map_err(|error| match error {
