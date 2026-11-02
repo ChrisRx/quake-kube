@@ -436,6 +436,9 @@ struct PresetView<'a> {
     game_types: Vec<GameTypeView<'a>>,
     maps: &'a [String],
     bots: bool,
+    /// Whether the maps' thumbnails and arena details are ready. They're made when the
+    /// gateway starts, which takes a few minutes on a new cluster.
+    levelshots: bool,
     /// What the maps' arena files say about them, by lowercase map name, once known.
     map_info: BTreeMap<String, Arena>,
     map_lists: &'a [MapList],
@@ -481,6 +484,7 @@ fn preset_views(gateway: &Gateway) -> Vec<PresetView<'_>> {
                 .collect(),
             maps: &preset.maps,
             bots: preset.bots,
+            levelshots: gateway.levelshots.ready(&preset.name),
             map_info: gateway.levelshots.arenas(&preset.name),
             map_lists: &preset.map_lists,
         })
@@ -501,6 +505,8 @@ struct ServerView {
     /// Filled in once the server answers queries.
     hostname: Option<String>,
     map: Option<String>,
+    /// The map's long name, e.g. "The Longest Yard", when its arena file has one.
+    map_title: Option<String>,
     /// How many maps it plays in turn.
     rotation: usize,
     game_type: Option<String>,
@@ -554,6 +560,10 @@ async fn list_servers(
             let number = |key: &str| get(key).and_then(|v| v.parse::<i32>().ok());
             let humans = number("g_humanplayers");
             let status = qs.status.clone().unwrap_or_default();
+            let map = get("mapname");
+            let map_title = (qs.labels().get(PRESET_LABEL))
+                .zip(map.as_deref())
+                .and_then(|(preset, map)| gateway.levelshots.title(preset, map));
             ServerView {
                 namespace: qs.namespace().unwrap_or_default(),
                 name: qs.name_any(),
@@ -567,7 +577,8 @@ async fn list_servers(
                         .as_ref()
                         .and_then(|server| server.hostname.clone())
                 }),
-                map: get("mapname"),
+                map,
+                map_title,
                 rotation: qs.spec.maps.len(),
                 // Mods that choose their modes by cvars, like DeFRaG, are named by the
                 // preset's game type the server was created with.
@@ -658,6 +669,9 @@ struct ServerSettings {
     maps: Vec<String>,
     #[serde(default)]
     bots: i32,
+    /// The bots' skill, 1 to 5, or the game's default when unset.
+    #[serde(default)]
+    bot_skill: Option<i32>,
     #[serde(default)]
     password: Option<String>,
     /// Limits for each map, or the game's defaults when unset.
@@ -688,6 +702,7 @@ impl ServerSettings {
             bots: (spec.bot.as_ref())
                 .and_then(|bot| bot.min_players)
                 .unwrap_or(0),
+            bot_skill: spec.game.as_ref().and_then(|game| game.single_player_skill),
             password: spec.game.as_ref().and_then(|game| game.password.clone()),
             frag_limit: map.and_then(|map| map.frag_limit),
             time_limit: (map.and_then(|map| map.time_limit.as_deref()))
@@ -719,6 +734,7 @@ impl ServerSettings {
         }
         let limits = [
             ("bots", Some(self.bots), 0, 16),
+            ("the bots' skill", self.bot_skill, 1, 5),
             ("the frag limit", self.frag_limit, 0, 999),
             ("the time limit", self.time_limit, 0, 999),
             ("the capture limit", self.capture_limit, 0, 999),
@@ -739,6 +755,9 @@ impl ServerSettings {
             spec.bot.get_or_insert_default().min_players = Some(self.bots);
         }
         let game = spec.game.get_or_insert_default();
+        if preset.bots && self.bot_skill.is_some() {
+            game.single_player_skill = self.bot_skill;
+        }
         if game_type.type_.is_some() {
             game.type_ = game_type.type_;
         }
@@ -1654,6 +1673,7 @@ mod tests {
             game_type: "Instagib".to_owned(),
             maps: vec!["q3dm17".to_owned(), "q3dm7".to_owned()],
             bots: 3,
+            bot_skill: Some(4),
             password: Some(String::new()),
             frag_limit: Some(30),
             time_limit: Some(15),
@@ -1671,6 +1691,7 @@ mod tests {
         // The preset's own setting stays unless one is chosen.
         assert_eq!(spec.server.as_ref().unwrap().max_clients, Some(8));
         assert_eq!(spec.game.as_ref().unwrap().password, None);
+        assert_eq!(spec.game.as_ref().unwrap().single_player_skill, Some(4));
 
         // The settings read back from the server it makes.
         let mut server = QuakeServer::new("friday", spec);

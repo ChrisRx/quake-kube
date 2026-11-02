@@ -333,6 +333,13 @@
           </div>
           <div class="fields">
             <label id="s-bots">Bots <input name="bots" type="number" min="0" max="16" inputmode="numeric"></label>
+            <label id="s-bot-skill">Bot skill <select name="botSkill">
+              <option value="1">I Can Win</option>
+              <option value="2" selected>Bring It On</option>
+              <option value="3">Hurt Me Plenty</option>
+              <option value="4">Hardcore</option>
+              <option value="5">Nightmare!</option>
+            </select></label>
             <label>Frag limit <input name="fragLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-step="5" data-start="20"></label>
             <label>Time limit, min <input name="timeLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-step="5" data-start="10"></label>
             <label>Capture limit <input name="captureLimit" type="number" min="1" max="999" placeholder="Default" inputmode="numeric" data-start="8"></label>
@@ -466,6 +473,26 @@
           levelshot: (preset, map) => `/api/presets/${encodeURIComponent(preset)}/levelshots/${map.toLowerCase()}.jpg`,
         });
 
+      // Presets' map pictures and names are made when the gateway starts, so until they're
+      // ready the page checks for them, for the map picker.
+      if (manage?.presets.some((p) => !p.levelshots)) {
+        const check = setInterval(async () => {
+          try {
+            const response = await fetch("/api/config");
+            if (!response.ok) return;
+            manage.presets = (await response.json()).presets;
+          } catch {
+            return;
+          }
+          for (const preset of manage.presets) picker.update(preset);
+          if (manage.presets.every((p) => p.levelshots)) clearInterval(check);
+        }, 10000);
+      }
+
+      function mapTitle(preset, map) {
+        return manage.presets.find((p) => p.name === preset)?.mapInfo?.[map.toLowerCase()]?.title || map;
+      }
+
       function closeSettings() {
         settingsPanel.hidden = true;
         pauseMenu.hidden = false;
@@ -512,8 +539,8 @@
         const sameGame = preset.name === manage.settings.preset;
         const picked = (maps ?? []).filter((m) => preset.maps.includes(m));
         picker.setPreset(preset, { maps: picked.length ? picked : preset.maps.slice(0, 1), gameType: modes.value });
-        const bots = document.getElementById("s-bots");
-        bots.hidden = !preset.bots;
+        document.getElementById("s-bots").hidden = !preset.bots;
+        document.getElementById("s-bot-skill").hidden = !preset.bots;
         document.getElementById("s-switch").textContent = sameGame
           ? ""
           : `Switching to ${preset.title} restarts the server. Everyone rejoins once it's back, in a minute or so.`;
@@ -525,7 +552,7 @@
         settingsForm.reset();
         presetSelect.value = currentPreset() ? settings.preset : manage.presets[0].name;
         showSettingsPreset(settings.maps, settings.gameType);
-        for (const name of ["bots", "fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {
+        for (const name of ["bots", "botSkill", "fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {
           if (settings[name] != null) settingsForm.elements.namedItem(name).value = settings[name];
         }
         document.getElementById("s-error").textContent = "";
@@ -555,6 +582,7 @@
             return;
           }
           data.bots = Number(data.bots || 0);
+          data.botSkill = data.botSkill ? Number(data.botSkill) : null;
           for (const name of ["fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {
             data[name] = data[name] ? Number(data[name]) : null;
           }
@@ -588,7 +616,7 @@
           }
           note.textContent =
             result.applied === "live"
-              ? `Changing to ${data.maps[0]}…`
+              ? `Changing to ${mapTitle(data.preset, data.maps[0])}…`
               : "Saved. The server picks up the change within a minute or two.";
           setTimeout(() => {
             closeSettings();

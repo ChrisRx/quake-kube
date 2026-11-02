@@ -108,3 +108,28 @@ func TestApplyConfigGeneration(t *testing.T) {
 		t.Errorf("applied generation %d, map %s", s.applied.Generation, s.applied.Maps[0].Name)
 	}
 }
+
+func TestApplyConfigBotSkill(t *testing.T) {
+	const config = `
+server: {password: secret}
+bot: {minPlayers: 4}
+maps: [{name: q3dm7}]
+`
+	addr, commands := fakeConsole(t)
+	cfg, err := ParseConfig([]byte(config))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Dir: t.TempDir(), game: "baseq3", applied: cfg, rconAddr: addr}
+
+	// Bots are kicked, to be added again with the new skill.
+	harder := config + "game: {singlePlayerSkill: 4}\n"
+	if err := s.ApplyConfig([]byte(harder), "secret"); err != nil {
+		t.Fatal(err)
+	}
+	<-commands
+	data, _ := os.ReadFile(filepath.Join(s.Dir, "baseq3", liveConfigName))
+	if !strings.HasPrefix(string(data), "kick allbots\n") || !strings.Contains(string(data), `g_spSkill "4"`) {
+		t.Errorf("live config:\n%s", data)
+	}
+}

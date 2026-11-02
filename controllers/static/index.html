@@ -482,6 +482,13 @@
           <label>Game <select name="preset" id="presets"></select></label>
           <label>Mode <select name="gameType" id="game-types"></select></label>
           <label id="bots">Bots <input name="bots" type="number" min="0" max="16" value="2" inputmode="numeric"></label>
+          <label id="bot-skill">Bot skill <select name="botSkill">
+            <option value="1">I Can Win</option>
+            <option value="2" selected>Bring It On</option>
+            <option value="3">Hurt Me Plenty</option>
+            <option value="4">Hardcore</option>
+            <option value="5">Nightmare!</option>
+          </select></label>
           <label>Password <input name="password" type="password" placeholder="Optional" autocomplete="new-password"></label>
           <div class="form-wide">
             <span class="field-label">Maps, played in the order picked</span>
@@ -617,7 +624,10 @@
           details.append(detail("status", failed ? "failed" : "starting"));
         } else {
           if (s.game) details.append(detail("game", s.game));
-          if (s.map) details.append(detail("map", s.map));
+          if (s.map) {
+            const map = details.appendChild(detail("map", s.mapTitle || s.map));
+            if (s.mapTitle) map.title = s.map;
+          }
           if (s.rotation > 1) details.append(detail("rotation", `${s.rotation} maps`));
           if (s.gameType) details.append(detail("mode", s.gameType));
           if (s.humans != null) {
@@ -676,7 +686,7 @@
         img.dataset.src = src;
         panel.classList.add("no-shot");
         if (!src) return img.removeAttribute("src");
-        img.alt = `${s.map}`;
+        img.alt = s.mapTitle || s.map;
         img.onload = () => panel.classList.remove("no-shot");
         img.onerror = () => panel.classList.add("no-shot");
         img.src = src;
@@ -761,6 +771,21 @@
         }
         render();
         for (const s of servers) refreshStatus(s);
+        refreshPresets();
+      }
+
+      // Presets' map pictures and names are made when the gateway starts, so until they're
+      // ready the page checks for them, for the map picker.
+      async function refreshPresets() {
+        if (!config?.presets.some((p) => !p.levelshots)) return;
+        try {
+          const response = await fetch("/api/config");
+          if (!response.ok) return;
+          config.presets = (await response.json()).presets;
+        } catch {
+          return;
+        }
+        for (const preset of config.presets) picker.update(preset);
       }
 
       // Offers the chosen game's modes and maps.
@@ -776,9 +801,11 @@
         modes.replaceChildren(...preset.gameTypes.map((t) => new Option(t.name, t.name)));
         if (gameType && preset.gameTypes.some((t) => t.name === gameType)) modes.value = gameType;
         picker.setPreset(preset, { maps: maps ?? preset.maps.slice(0, 1), gameType: modes.value });
-        const bots = document.getElementById("bots");
-        bots.hidden = !preset.bots;
-        bots.querySelector("input").disabled = !preset.bots;
+        for (const id of ["bots", "bot-skill"]) {
+          const field = document.getElementById(id);
+          field.hidden = !preset.bots;
+          field.querySelector("input, select").disabled = !preset.bots;
+        }
       }
 
       async function setUp() {
@@ -969,6 +996,7 @@
           return;
         }
         data.bots = Number(data.bots ?? 0);
+        data.botSkill = data.botSkill ? Number(data.botSkill) : null;
         // Blank limits mean the game's defaults.
         for (const name of ["fragLimit", "timeLimit", "captureLimit", "maxPlayers"]) {
           data[name] = data[name] ? Number(data[name]) : null;

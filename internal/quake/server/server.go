@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -352,6 +353,11 @@ func (s *Server) applyLive(cfg *Config) error {
 	if err != nil {
 		return err
 	}
+	// Bots keep the skill they were added with, so they're kicked for bot_minplayers to add
+	// them again with the new one, unless commands added them.
+	if cfg.SinglePlayerSkill != s.applied.SinglePlayerSkill && !slices.ContainsFunc(cfg.Commands, isAddBot) {
+		data = append([]byte("kick allbots\n"), data...)
+	}
 	if err := s.writeFile(liveConfigName, data); err != nil {
 		return err
 	}
@@ -363,6 +369,10 @@ func (s *Server) applyLive(cfg *Config) error {
 		return errors.New("the console refused the rcon password")
 	}
 	return nil
+}
+
+func isAddBot(cmd string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(cmd)), "addbot")
 }
 
 // ApplyConfig applies a config sent by the gateway, so a change takes effect without waiting
