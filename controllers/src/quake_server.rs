@@ -837,12 +837,13 @@ pub fn pod_problem(pod: &Pod) -> Option<String> {
             .and_then(|w| w.reason.as_deref())
             .unwrap_or_default();
         match reason {
+            // The image may be one of the content images, mounted as volumes, so the message,
+            // which names it, is shown rather than the container's image.
             "ErrImagePull" | "ImagePullBackOff" | "InvalidImageName" => {
-                return Some(format!(
-                    "pulling {} failed: {}",
-                    container.image,
-                    waiting.and_then(|w| w.message.as_deref()).unwrap_or(reason)
-                ));
+                return Some(match waiting.and_then(|w| w.message.as_deref()) {
+                    Some(message) => format!("pulling an image failed: {message}"),
+                    None => format!("pulling {} failed: {reason}", container.image),
+                });
             }
             "CreateContainerConfigError" | "CreateContainerError" => {
                 return Some(format!(
@@ -1027,7 +1028,7 @@ mod tests {
                     "state": { "waiting": { "reason": "ImagePullBackOff", "message": "not found" } },
                 }],
             }))),
-            Some("pulling example.com/q3:1 failed: not found".to_owned())
+            Some("pulling an image failed: not found".to_owned())
         );
     }
 
