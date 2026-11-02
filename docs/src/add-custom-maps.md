@@ -26,7 +26,7 @@ These images are published for x86_64 and aarch64:
 | `ghcr.io/chrisrx/quake-kube-cpma:1.53` | CPMA 1.53 and its map pack | `cpma` |
 | `ghcr.io/chrisrx/quake-kube-rocket-arena:1.76` | Rocket Arena 3, and its maps for CPMA's Clan Arena | `arena`, `cpma` |
 | `ghcr.io/chrisrx/quake-kube-openarena:0.8.8` | OpenArena 0.8.8 and the OpenArena Community Mappack Vol. 1 | `baseoa` |
-| `ghcr.io/chrisrx/quake-kube-quake3-maps:1` | Community maps for Quake 3 from lvlworld | `baseq3` |
+| `ghcr.io/chrisrx/quake-kube-quake3-maps:5` | 47 community maps for Quake 3 from lvlworld (see [Credits](credits.md#community-maps)) | `baseq3` |
 | `ghcr.io/chrisrx/quake-kube-ufreeze:1.21` | Ultra Freeze Tag 1.21 | `ufreeze` |
 | `ghcr.io/chrisrx/quake-kube-defrag:1.91.31` | DeFRaG 1.91.31 and its test maps | `defrag` |
 

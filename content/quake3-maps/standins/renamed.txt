@@ -1,0 +1,63 @@
+# Stand-ins under other names, for the full game's textures that OpenArena
+# has no same-named replacement for: "<OpenArena pak> <its file> <name a map
+# wants>", with OpenArena's closest look-alike.
+# zl3tourney1, pjw3tourney1: red cloud sky
+pak4-textures.pk3 textures/skies/intelredclouds.jpg textures/skies/redclouds.jpg
+# pjw3tourney1: the same blocks, renamed
+pak4-textures.pk3 textures/gothic_block/blocks17_k.jpg textures/gothic_block/blocks17k.jpg
+# pjw3tourney1: iron wall
+pak4-textures.pk3 textures/gothic_wall/iron01_e.jpg textures/gothic_wall/iron01_c.jpg
+# pjw3tourney1: tower trim
+pak4-textures.pk3 textures/gothic_trim/km_arena1tower4.jpg textures/gothic_trim/km_arena1tower8.jpg
+# pjw3tourney1: stucco trim
+pak4-textures.pk3 textures/gothic_trim/stucco7bord1.jpg textures/gothic_trim/stucco7top.jpg
+# pjw3tourney1, ztn3tourney1: stucco ceiling
+pak4-textures.pk3 textures/gothic_trim/stucco7bord1.jpg textures/gothic_ceiling/xstucco7top.jpg
+# pjw3tourney1, ztn3tourney1: pitted metal roof
+pak4-textures.pk3 textures/gothic_trim/pitted_rust2.jpg textures/gothic_trim/pitted_roof.jpg
+# pjw3tourney1: dark metal
+pak4-textures.pk3 textures/gothic_trim/pitted_rust3_black.jpg textures/gothic_wall/metalciclesdark.jpg
+# pjw3tourney1: chrome border
+pak4-textures.pk3 textures/base_wall/chrome_metal.jpg textures/base_trim/chrome_border.jpg
+# pjw3tourney1: banner
+pak4-textures.pk3 textures/base_wall/main_q3abanner.jpg textures/base_wall/protobanner_ow.jpg
+# pjw3tourney1: rusty totem
+pak4-textures.pk3 textures/base_trim/deeprust.jpg textures/proto/rustytotum.jpg
+# pjw3tourney1, ztn3tourney1: the Baphomet statue, in stone
+pak6-patch085.pk3 textures/gothic_block/blocks15.jpg models/mapobjects/baph/baphomet.jpg
+# ztn3tourney1: killblock
+pak4-textures.pk3 textures/gothic_block/killblock_i2.jpg textures/gothic_block/killblock_i3.jpg
+# ztn3tourney1: glowing killblock
+pak4-textures.pk3 textures/gothic_block/evil2ckillblockglow.jpg textures/gothic_block/killblock_i4glow.jpg
+# ztn3tourney1: cathedral door
+pak4-textures.pk3 textures/gothic_door/xian_tourneyarch_inside2.jpg textures/gothic_cath/smalldoor_xiandm9a.jpg
+# ztn3tourney1: cathedral door
+pak4-textures.pk3 textures/gothic_door/xian_tourneyarch_med1b.jpg textures/gothic_cath/smalldoor_xiandm9f.jpg
+# ztn3tourney1: pentagram
+pak4-textures.pk3 textures/base_floor/rusty_pentagrate.tga textures/gothic_floor/pent_glow.tga
+# ztn3tourney1: metal bridge
+pak6-patch085.pk3 textures/gothic_floor/metalbridge02.jpg textures/gothic_floor/pent_metalbridge02.jpg
+# ztn3tourney1: stair tops
+pak4-textures.pk3 textures/gothic_floor/blocks17floor.jpg textures/gothic_floor/xstairtop5.jpg
+# ztn3tourney1: iron cross light
+pak4-textures.pk3 textures/gothic_trim/q1metal7.jpg textures/gothic_light/ironcrossltbkgrd.jpg
+# ztn3tourney1: baseboard
+pak4-textures.pk3 textures/gothic_trim/baseboard09.jpg textures/gothic_trim/baseboard01.jpg
+# ztn3tourney1: baseboard
+pak4-textures.pk3 textures/gothic_trim/baseboard08_b.jpg textures/gothic_trim/baseboard08.jpg
+# ztn3tourney1: baseboard
+pak4-textures.pk3 textures/gothic_trim/baseboard09.jpg textures/gothic_trim/baseboard09_c2b.jpg
+# ztn3tourney1: red baseboard
+pak4-textures.pk3 textures/gothic_trim/baseboard08_ered.jpg textures/gothic_trim/baseboard09_red.jpg
+# ztn3tourney1: church brick
+pak4-textures.pk3 textures/gothic_wall/streetbricks.jpg textures/gothic_wall/church_brick3b.jpg
+# ztn3tourney1: arch
+pak4-textures.pk3 textures/gothic_door/xian_dm3arch.jpg textures/gothic_wall/dm5_archifin.jpg
+# ztn3tourney1: arch
+pak4-textures.pk3 textures/gothic_door/tim_dmarch01.jpg textures/gothic_wall/dm5_archkfin.jpg
+# ztn3tourney1: iron wall
+pak4-textures.pk3 textures/gothic_wall/iron01_e.jpg textures/gothic_wall/iron01_c2.jpg
+# ztn3tourney1: rusted iron
+pak4-textures.pk3 textures/gothic_trim/pitted_rust3.jpg textures/gothic_wall/iron1_brickrust.jpg
+# ztn3tourney1: gold metal
+pak4-textures.pk3 textures/gothic_wall/gold_brick.jpg textures/gothic_wall/metaltech16gold.jpg

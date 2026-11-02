@@ -1,0 +1,37 @@
+name: Content removal
+description: Ask for a map, mod or other content you made to be removed from QuakeKube, or its credit changed.
+title: "Content removal: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        QuakeKube ships community maps and mods whose readmes allow distributing them. Many of their authors can't be reached, so if you made one of them and don't want it included, or want its credit changed, say so here and it will be taken care of.
+  - type: input
+    id: content
+    attributes:
+      label: Content
+      description: The map or mod, e.g. its name or pk3.
+      placeholder: pukka3tourney2
+    validations:
+      required: true
+  - type: dropdown
+    id: request
+    attributes:
+      label: What would you like done?
+      options:
+        - Remove it
+        - Change its credit
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: connection
+    attributes:
+      label: Your connection to it
+      description: For example, that you're its author, and anything that helps show it, like where you published it.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Anything else
