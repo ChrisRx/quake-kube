@@ -10,6 +10,7 @@
   lib,
   stdenvNoCC,
   fetchurl,
+  linkFarmFromDrvs,
   unzip,
   zip,
 }:
@@ -166,4 +167,6 @@ stdenvNoCC.mkDerivation {
     cp ${./profile.json} $out/baseq3/quake-kube-profile.json
   '';
   dontFixup = true;
+  # Cached and pinned in CI, since lvlworld's mirror is slow (see push-content.yaml).
+  passthru.downloads = linkFarmFromDrvs "quake3-maps-downloads" (lib.attrValues maps);
 }
