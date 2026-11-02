@@ -363,6 +363,11 @@ impl QuakeServer {
         if let Some(master) = master {
             server["listServer"] = master.into();
         }
+        // The gateway sends configs to the server straight away, so one can reach it before
+        // the file with an older one does. The server ignores configs older than its own.
+        if let Some(generation) = self.metadata.generation {
+            config["generation"] = generation.into();
+        }
         Ok(serde_yaml_ng::to_string(&config)?)
     }
 

@@ -81,3 +81,30 @@ func TestApplyConfig(t *testing.T) {
 		t.Errorf("applied map is %s", s.applied.Maps[0].Name)
 	}
 }
+
+func TestApplyConfigGeneration(t *testing.T) {
+	addr, commands := fakeConsole(t)
+	cfg, err := ParseConfig([]byte("generation: 3\n" + testConfig))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Dir: t.TempDir(), game: "baseq3", applied: cfg, rconAddr: addr}
+
+	// The file catching up with an older config, after the gateway sent a newer one.
+	older := "generation: 2\n" + strings.Replace(testConfig, "q3dm7", "q3dm17", 1)
+	if err := s.ApplyConfig([]byte(older), "secret"); err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 0 || s.applied.Maps[0].Name != "q3dm7" {
+		t.Error("applied an older config")
+	}
+
+	newer := "generation: 4\n" + strings.Replace(testConfig, "q3dm7", "q3dm17", 1)
+	if err := s.ApplyConfig([]byte(newer), "secret"); err != nil {
+		t.Fatal(err)
+	}
+	<-commands
+	if s.applied.Generation != 4 || s.applied.Maps[0].Name != "q3dm17" {
+		t.Errorf("applied generation %d, map %s", s.applied.Generation, s.applied.Maps[0].Name)
+	}
+}
