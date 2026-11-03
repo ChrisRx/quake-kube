@@ -68,7 +68,9 @@ type Server struct {
 	applied *Config
 	// rconAddr is where the server's console is reached from here.
 	rconAddr string
-	ctx      context.Context
+	// process is the context the server's process is started with. It isn't canceled with
+	// the context Start is given, since GracefulStop still needs the process after that.
+	process context.Context
 }
 
 // liveConfigName is the config run from the console to change a running server.
@@ -125,7 +127,8 @@ func (s *Server) Start(ctx context.Context) error {
 		server = "ioq3ded.i386"
 		args = append([]string{"+set", "vm_game", "0"}, args...)
 	}
-	s.cmd = CommandContext(context.Background(), server, args...)
+	process := context.WithoutCancel(ctx)
+	s.cmd = CommandContext(process, server, args...)
 	if cfg.Native {
 		// Libraries that old ask for an executable stack, which glibc no longer allows
 		// unless told to.
@@ -146,7 +149,15 @@ func (s *Server) Start(ctx context.Context) error {
 		if err := s.cmd.Start(); err != nil {
 			return err
 		}
-		return s.cmd.Wait()
+		exited := make(chan error, 1)
+		go func() { exited <- s.cmd.Wait() }()
+		select {
+		case err := <-exited:
+			return err
+		case <-ctx.Done():
+			s.GracefulStop()
+			return ctx.Err()
+		}
 	}
 
 	data, err := cfg.Marshal()
@@ -171,7 +182,7 @@ func (s *Server) Start(ctx context.Context) error {
 		addr = net.JoinHostPort("127.0.0.1", port)
 	}
 	s.mu.Lock()
-	s.ctx = ctx
+	s.process = process
 	s.rconAddr = addr
 	s.applied = cfg
 	s.mu.Unlock()
@@ -210,15 +221,14 @@ func (s *Server) Start(ctx context.Context) error {
 				return err
 			}
 		case <-ctx.Done():
-			// The shutdown handler has already warned players with GracefulStop.
+			s.GracefulStop()
 			return ctx.Err()
 		}
 	}
 }
 
 func (s *Server) GracefulStop() {
-	// The server is gone when this returns, however it returns, since the shutdown
-	// context is only canceled after it does.
+	// The server is gone when this returns, however it returns.
 	defer s.HardStop()
 
 	if s.ShutdownDelay == 0 {
@@ -333,7 +343,7 @@ func (s *Server) apply(cfg *Config) error {
 		log.Printf("applying config from the console failed, restarting: %v", err)
 	}
 	s.applied = cfg
-	if err := s.cmd.Restart(s.ctx); err != nil {
+	if err := s.cmd.Restart(s.process); err != nil {
 		return err
 	}
 	go func() {

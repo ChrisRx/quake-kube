@@ -110,8 +110,8 @@ schema = 3
     hash = 'sha256-VKzMTMS9pIB/cwe17xPftCSK9Mf4Y6EuBEJlB4by5mE='
 
   [mod.'go.chrisrx.dev/x']
-    version = 'v0.0.0-20261015142902-ad113d4a3a98'
-    hash = 'sha256-gZVz6N3SVOXLkaeP0CyssRHPgUTtQNhq8MX1z1FZSyg='
+    version = 'v0.0.0-20261103032905-3b011872309e'
+    hash = 'sha256-eiHf0walwE2W7Oo0FFGcvhEQ2Uaw+qNC6Sjqj1+uEqc='
 
   [mod.'go.yaml.in/yaml/v2']
     version = 'v2.4.4'

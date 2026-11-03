@@ -10,7 +10,7 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	github.com/soheilhy/cmux v0.1.5
 	github.com/spf13/cobra v1.10.2
-	go.chrisrx.dev/x v0.0.0-20261015142902-ad113d4a3a98
+	go.chrisrx.dev/x v0.0.0-20261103032905-3b011872309e
 	google.golang.org/grpc v1.85.0
 	k8s.io/apimachinery v0.37.2
 	sigs.k8s.io/yaml v1.6.0
