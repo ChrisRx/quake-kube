@@ -56,6 +56,10 @@ func NewCommand() *cobra.Command {
 			ctx := context.Shutdown()
 			defer ctx.Close()
 
+			ctx.InterceptTimeout(func() {
+				fmt.Println("\rCTRL+C received, press again to shutdown gracefully ...")
+			}, 5*time.Second)
+
 			qs := quakeserver.Server{
 				Addr:          opts.ServerAddr,
 				ConfigFile:    opts.ConfigFile,
@@ -64,23 +68,22 @@ func NewCommand() *cobra.Command {
 				ShutdownDelay: opts.ShutdownDelay,
 			}
 
-			ctx.AddHandler(func() {
-				fmt.Println("\rCTRL+C pressed ...")
-				qs.GracefulStop()
+			context.AfterSignal(ctx, func(sig os.Signal) {
+				switch sig {
+				case os.Interrupt:
+					fmt.Printf("\r%v received, shutting down gracefully, press again to stop now ...\n", sig)
+				default:
+					fmt.Printf("received %v, shutting down gracefully ...\n", sig)
+				}
 			})
+
 			ctx.AddHandler(func() {
-				fmt.Println("\rCTRL+C pressed again, shutting down ...")
+				fmt.Println("\rCTRL+C pressed again, shutting down immediately ...")
 				// We still need to call HardStop to ensure that the underlying child
 				// process is killed before exiting.
 				qs.HardStop()
 				os.Exit(1)
 			})
-
-			go func() {
-				if err := errors.Ignore(qs.Start(ctx), context.Canceled); err != nil {
-					slog.Error("quake server failed", slog.Any("error", err))
-				}
-			}()
 
 			m := mux.New(must.Ok(net.Listen("tcp", opts.ClientAddr)))
 			// The pod's gRPC health checks and the HTTP server share a port.
@@ -91,7 +94,14 @@ func NewCommand() *cobra.Command {
 			h.POST("/config", echo.WrapHandler(qs.ConfigHandler()))
 			m.Register(h).Any()
 			fmt.Printf("Starting server %s\n", opts.ClientAddr)
-			return m.ServeAndWait()
+			go func() {
+				if err := m.ServeAndWait(); err != nil {
+					slog.Error("http server failed", slog.Any("error", err))
+				}
+			}()
+
+			// Start returns once the server has stopped, gracefully when ctx is canceled.
+			return errors.Ignore(qs.Start(ctx), context.Canceled)
 		},
 	}
 	cmd.Flags().StringVarP(&opts.ConfigFile, "config", "c", "", "server configuration file")
