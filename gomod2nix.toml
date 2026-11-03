@@ -110,8 +110,8 @@ schema = 3
     hash = 'sha256-VKzMTMS9pIB/cwe17xPftCSK9Mf4Y6EuBEJlB4by5mE='
 
   [mod.'go.chrisrx.dev/x']
-    version = 'v0.0.0-20261103032905-3b011872309e'
-    hash = 'sha256-eiHf0walwE2W7Oo0FFGcvhEQ2Uaw+qNC6Sjqj1+uEqc='
+    version = 'v0.0.0-20261103231709-6405755dad2b'
+    hash = 'sha256-nRk6HsIbO3Hn2FJMvbLWK4kPF5E5HX7sux2C5RNKB7E='
 
   [mod.'go.yaml.in/yaml/v2']
     version = 'v2.4.4'
@@ -128,6 +128,10 @@ schema = 3
   [mod.'golang.org/x/sys']
     version = 'v0.49.0'
     hash = 'sha256-/1S3yy3in72ygZT1CKymvOzJZqCMYiGSqZDfvSyB3LI='
+
+  [mod.'golang.org/x/term']
+    version = 'v0.47.0'
+    hash = 'sha256-XtEeyv5y3g9nWfzB7vevm5KwNR8hW+LVsBNEectqIhA='
 
   [mod.'golang.org/x/text']
     version = 'v0.43.0'

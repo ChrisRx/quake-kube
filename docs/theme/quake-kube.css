@@ -53,6 +53,12 @@
     --blockquote-caution-color: #c2421c;
 }
 
+/* Short pages keep the theme's background down to the bottom of the window,
+   rather than relying on the root element's background to fill it. */
+.page-wrapper {
+    min-height: 100dvh;
+}
+
 /* Code blocks use the highlighting theme's background otherwise. */
 .coal .hljs {
     background: #181613;
