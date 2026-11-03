@@ -56,7 +56,7 @@ func NewCommand() *cobra.Command {
 			ctx := context.Shutdown()
 			defer ctx.Close()
 
-			ctx.InterceptTimeout(func() {
+			ctx.Intercept(func() {
 				fmt.Println("\rCTRL+C received, press again to shutdown gracefully ...")
 			}, 5*time.Second)
 
@@ -77,10 +77,12 @@ func NewCommand() *cobra.Command {
 				}
 			})
 
-			ctx.AddHandler(func() {
-				fmt.Println("\rCTRL+C pressed again, shutting down immediately ...")
-				// We still need to call HardStop to ensure that the underlying child
-				// process is killed before exiting.
+			ctx.AddHandler(func(sig os.Signal) {
+				if sig == os.Interrupt {
+					fmt.Println("\rCTRL+C pressed again, shutting down immediately ...")
+				} else {
+					fmt.Printf("\r%v received, shutting down immediately ...\n", sig)
+				}
 				qs.HardStop()
 				os.Exit(1)
 			})

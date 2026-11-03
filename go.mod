@@ -10,7 +10,7 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	github.com/soheilhy/cmux v0.1.5
 	github.com/spf13/cobra v1.10.2
-	go.chrisrx.dev/x v0.0.0-20261103032905-3b011872309e
+	go.chrisrx.dev/x v0.0.0-20261103231709-6405755dad2b
 	google.golang.org/grpc v1.85.0
 	k8s.io/apimachinery v0.37.2
 	sigs.k8s.io/yaml v1.6.0
@@ -41,6 +41,7 @@ require (
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261026165753-2ffab32bce7e // indirect
