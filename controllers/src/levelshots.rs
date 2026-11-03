@@ -8,7 +8,7 @@ use crate::prelude::*;
 use crate::quake_server::{checksum, pod_problem, HTTP_PORT};
 use axum::body::Bytes;
 use futures::stream;
-use kube::api::PostParams;
+use kube::api::{LogParams, PostParams};
 use std::collections::HashMap;
 use std::sync::RwLock;
 use tokio::time::Instant;
@@ -259,7 +259,22 @@ impl Levelshots {
             Err(kube::Error::Api(status)) if status.code == 409 => {}
             Err(error) => return Err(error.into()),
         }
-        let result = self.fetch(&pods, &name).await;
+        let result =
+            match self.fetch(&pods, &name).await {
+                Ok(maps) => Ok(maps),
+                // The pod's deleted next, so the end of its logs goes with the error.
+                Err(error) => {
+                    let params = LogParams {
+                        tail_lines: Some(20),
+                        ..LogParams::default()
+                    };
+                    match pods.logs(&name, &params).await {
+                        Ok(logs) if !logs.trim().is_empty() => Err(error
+                            .context(format!("the pod's last log lines:\n{}", logs.trim_end()))),
+                        _ => Err(error),
+                    }
+                }
+            };
         if let Err(error) = pods.delete(&name, &DeleteParams::background()).await {
             debug!(pod = %name, "deleting levelshots pod failed: {error}");
         }
