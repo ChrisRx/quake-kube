@@ -47,6 +47,11 @@ tasks:
       - task: docs:site
       - go run ./hack/play-site --serve docs/book
 
+  docs:screenshots:
+    desc: Retake the web app's screenshots in the docs from the browser preview
+    cmds:
+      - hack/screenshots.sh
+
   chart:package:
     desc: Package the Helm chart, with the version in chart/Chart.yaml
     cmds:

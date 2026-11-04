@@ -1,14 +1,18 @@
 # Using The Web App
 
 The web app lists a cluster's servers, creates them and plays them in the
-browser. To reach it, see [Getting Started](getting-started.md).
+browser. To reach it, see [Getting Started](getting-started.md). The screenshots
+are from the [browser preview](try-it.md), which leaves out a few things a cluster
+has, noted below.
 
 ## The server list
 
+![The server list with two servers. Each row shows the game, map, rotation, mode and players, with Play, Edit and Delete buttons. The first row is open, showing a picture of the map.](images/server-list.png)
+
 The list shows every `QuakeServer` in the cluster, including ones created with
-`kubectl`. Each row has the server's game, map, mode and players, such as
-`2/12 +3 bots`, along with its address for native clients, whether it needs a
-password, and its owner when the gateway [knows who people are](authentication.md).
+`kubectl`. On a cluster, rows also have the server's address for native clients,
+whether it needs a password, and its owner when the gateway
+[knows who people are](authentication.md).
 
 Clicking a row opens the map's picture, the server's limits and its scoreboard.
 
@@ -18,18 +22,21 @@ says why, such as an image that can't be pulled (see
 
 ## Creating a server
 
-**Create server** opens a dialog with these settings:
+**Create server** opens this dialog:
 
-| Setting | What it does |
-|---|---|
-| Name | Up to 64 characters, shown in the list and in server browsers. Servers can share a name. |
-| Game | One of the [games](games.md) the gateway offers. |
-| Mode | The game's modes. Each game has its own. |
-| Bots | How many players to fill the server up to with bots, from 0 to 16. They leave as people join. Hidden for games without bots. |
-| Bot skill | From I Can Win to Nightmare! |
-| Password | Optional. Players are asked for it when they join. |
-| Maps | The rotation. See below. |
-| Frag limit, Time limit, Capture limit, Max players | Blank uses the game's defaults. The limits apply to every map in the rotation. |
+![The New Server dialog, with fields for name, game, mode, bots and bot skill, a grid of map pictures numbered in the order they were picked, fields for the frag, time and capture limits and max players, and Copy Link, Cancel and Create buttons.](images/create-server.png)
+
+- **Name**: up to 64 characters, shown in the list and in server browsers. Servers
+  can share a name.
+- **Game**: one of the [games](games.md) the gateway offers, each with its own
+  modes.
+- **Bots**: how many players to fill the server up to, from 0 to 16. They leave as
+  people join. Hidden for games without bots.
+- **Bot skill**: from I Can Win to Nightmare!
+- **Password**: optional, and only on a cluster. Players are asked for it when they
+  join.
+- **Frag limit**, **Time limit**, **Capture limit**, **Max players**: these apply
+  to every map in the rotation.
 
 The button is hidden when `gateway.maxServers` is 0. Creating a server fails
 once the limits in `gateway.maxServers` and `gateway.maxServersPerUser` are
@@ -38,15 +45,13 @@ reached.
 ### Picking maps
 
 Servers play their rotation in the order the maps are picked, moving to the next
-one after each match. A rotation can have up to 64 maps. Above the maps are:
+one after each match. A rotation can have up to 64 maps.
 
-- a search box
-- **Made for this mode**, which only shows maps whose arena files say they were
-  made for the chosen mode
-- a list of the preset's suggested maps, and any you've saved
-- **Shuffle** and **Clear**
-- **Save as list**, which keeps the rotation in your browser for that game, and
-  **Delete list**
+- **Made for this mode** only shows maps whose arena files say they were made for
+  the chosen mode.
+- The lists menu has the preset's suggested maps and any you've saved.
+- **Save as list** keeps the rotation in your browser for that game, and
+  **Delete list** removes it.
 
 Pictures and titles of a game's maps take a minute or two to appear the first
 time anyone picks from them, since the gateway has to make them.
@@ -59,9 +64,12 @@ maps picked. Whoever opens it still chooses a name and creates the server.
 ## Joining a server
 
 **Play** opens the join page, once the server is ready and has answered the
-gateway. It asks for:
+gateway.
 
-- a player name, which it remembers
+<img src="images/join-server.png" width="390" alt="The join form for a server named Friday Night, with a player name field, a note on how game files load, a Join button and a link back to the servers.">
+
+It remembers the player name. On a cluster, it can also ask for:
+
 - the server's password, if it has one
 - voice chat, if the server has it, which uses your microphone
 - agreement to the Quake 3 demo license, for the game files it downloads, the
@@ -79,10 +87,10 @@ running the same game. Browsers only keep that cache on HTTPS pages and on
 Clicking **Play** gives the game the mouse. Pressing Esc takes it back and pauses
 with a menu, while the game keeps running:
 
-- **Resume** goes back to the game, and so does clicking outside the menu.
-- **Full screen** fills the screen.
-- **Server settings** changes the server, for whoever can (see below).
-- **Leave server** goes back to the server list.
+![The Paused menu over a running game, with Resume, Full Screen, Server Settings and Leave Server buttons.](images/pause-menu.png)
+
+Clicking outside the menu also resumes. **Server settings** is for whoever can
+change the server (see below), and **Leave server** goes back to the server list.
 
 ## Changing a server
 
