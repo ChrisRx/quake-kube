@@ -7,12 +7,22 @@ QuakeKube is a Kubernetes-ified version of [Quake 3](https://en.wikipedia.org/wi
 
 [Try the web app in your browser](try-it.md), with nothing to install.
 
+## What's here
+
+- **[Getting Started](getting-started.md)** installs it on a cluster.
+- **[Using The Web App](web-app.md)** covers creating servers, picking maps and playing.
+- **[Games](games.md)** lists what it can run out of the box: Quake 3, OpenArena, Urban Terror, CPMA and more.
+- **[How It Works](how-it-works.md)** explains the parts and how they fit together.
+- **[Configuration](configuration.md)** covers servers and the chart, with the [QuakeServer Reference](quakeserver-reference.md) for every field.
+- **[Monitoring And Troubleshooting](troubleshooting.md)** is for when a server doesn't start or a client can't connect.
+- **[Development](development.md)** covers working on QuakeKube itself.
+
 ## Limitations
 
-This uses files from the Quake 3 Demo, which has four maps. Servers can download more maps and mods, such as [CPMA](https://playmorepromode.com) or [Urban Terror](https://www.urbanterror.info), when they start (see [Add Mods And Maps](add-custom-maps.md)). Mods have to ship QVMs to run in the browser, since it can't load native game libraries.
+Servers use the files from the Quake 3 Demo, which has four maps, rather than the full game. Other maps and mods come from content images or downloads when servers start (see [Add Mods And Maps](add-custom-maps.md)), and maps that use the full game's textures get stand-ins for them. Mods have to ship QVMs to run in the browser, since it can't load native game libraries.
 
-Any non-browser Quake 3 client can connect to the servers too.
+Any non-browser Quake 3 client can connect to the servers too, as long as it has their files.
 
 ## What is this project for?
 
-This was just made for fun and learning. It isn't trying to be a complete solution for managing Quake 3 on Kubernetes, and I am using it now as a repo of common patterns and best practices (IMO) for Go/Kubernetes projects. It has since grown a Quake 3 master server, a server that exchanges information with the game client about what dedicated game servers are available, and a controller/CRD that ties it all together.
+For fun. It started with a hacky version that I deployed as a goof to a work cluster. I wanted to use it for what I called a "Team (Arena) Building" event. What I discovered was a feeling reaching back to old days of networked Doom after work in the office, or lugging around a heavy CRT monitor and computer to a friend's basement for a sleepless night of multiplayer games over LAN. It is a feeling that I think everyone should be free to experience. Quake 3 Arena was a special game and even more so when playing it with people you know. Online matchmaking is convenient but there is nothing like hopping on a server with your buddies/co-workers and playing a Free For All or CTF match.

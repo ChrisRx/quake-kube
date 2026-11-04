@@ -1,9 +1,9 @@
 # Authentication
 
 By default, anyone who can reach the web app can create servers and change or
-delete the ones created there. To know who people are, put a proxy that signs them in in
-front of the gateway and tell the gateway how to read who they are, with
-`gateway.auth.mode`:
+delete the ones created there. To know who people are, put a proxy that signs
+them in in front of the gateway and tell the gateway how to read who they are,
+with `gateway.auth.mode`:
 
 - `none`: the default. Servers have no owners.
 - `iap`: Google Cloud's [Identity-Aware Proxy](https://cloud.google.com/iap).
@@ -24,11 +24,10 @@ menu while playing, along with admins.
 
 Admins are whoever Kubernetes RBAC lets delete QuakeServers in the web app's
 namespace, which the gateway asks the API server about. So anyone who could
-already delete servers with `kubectl` can change and delete them from the web
-app too, and
-admins can be granted in the same way as other access to the cluster. The chart
-has a `quake-kube-admin` ClusterRole for this, and binds it to the users and
-groups in `gateway.auth.admins`:
+already delete servers with `kubectl` can change and delete the ones created from
+the web app there too, and admins can be granted in the same way as other access
+to the cluster. The chart has a `quake-kube-admin` ClusterRole for this, and binds
+it to the users and groups in `gateway.auth.admins`:
 
 ```yaml
 gateway:
@@ -38,8 +37,9 @@ gateway:
       groups: [quake-admins]
 ```
 
-Servers created before authentication was turned on have no owner, so only
-admins can change or delete them.
+Servers created from the web app before authentication was turned on have no
+owner, so only admins can change or delete them. Nobody can change or delete
+servers created with `kubectl` from the web app, including admins.
 
 `gateway.maxServersPerUser` limits how many servers each person can have at
 once, alongside `gateway.maxServers` for everyone together. Admins have the same

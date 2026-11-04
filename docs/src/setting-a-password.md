@@ -11,6 +11,9 @@ spec:
 The web app's **Password** field sets it for servers it creates. The browser
 client asks for it when a server needs one.
 
+It's stored as plain text in the QuakeServer, so anyone who can read QuakeServers
+can read it (see [Security](security.md#passwords)).
+
 ## Remote administration
 
 The controller generates an rcon password for each server and keeps it in the

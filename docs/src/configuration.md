@@ -2,7 +2,9 @@
 
 ## QuakeServer
 
-Each server is a `QuakeServer`. Every field is optional:
+Each server is a `QuakeServer`. Every field is optional. The
+[QuakeServer Reference](quakeserver-reference.md) lists them all, with their
+defaults:
 
 ```yaml
 apiVersion: quake.kube/v1
@@ -66,8 +68,10 @@ maps:
     captureLimit: 8
 ```
 
-Changes to the spec are applied to the running server, which restarts with the
-new configuration. Changing the content or the mod replaces the server's pod.
+Changes to the spec are applied to the running server from its console, which
+reloads the map without disconnecting anyone. Changing the content or the mod
+replaces the server's pod, and `commands` only run when a server starts (see
+[How changes apply](quakeserver-reference.md#how-changes-apply)).
 
 ## The chart
 
@@ -93,5 +97,12 @@ documents its settings, including:
   without players before it's deleted (30m by default), or empty to keep
   servers until someone deletes them
 - `gameServers.exposure`: how native clients reach game servers, and the port
-  range servers get their external ports from when they share an address
+  range servers get their external ports from when they share an address (see
+  [Exposing Game Servers](networking.md))
 - `master.service`: how native clients reach the master server
+- `gateway.ingress`, `gateway.httpRoute` and `gateway.webtransport`: how browsers
+  reach the gateway (see
+  [Publish the web app](getting-started.md#publish-the-web-app))
+- `controller.logLevel` and `gateway.logLevel`: log filters, in `RUST_LOG` syntax
+- `crds.install` and `crds.keep`: whether the chart installs the CRD, and keeps it
+  when uninstalled
