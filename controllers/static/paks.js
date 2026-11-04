@@ -13,7 +13,10 @@ class RemotePaks {
   static CONCURRENCY = 6;
 
   // Fetched ranges are cached by their pak's checksum, so a changed pak never reads old parts.
-  static CACHE = "quake-kube-ranges";
+  static CACHE = "quake-kube-ranges-2";
+  // Older caches, which are removed. The first held ranges GitHub Pages sent of its compressed
+  // copies of paks, with nothing to tell them apart, under the same names as the real ones.
+  static OLD_CACHES = ["quake-kube-ranges"];
 
   constructor() {
     this.paks = [];
@@ -48,6 +51,9 @@ class RemotePaks {
   // Finds which ranges of the paks are in the browser's cache, without reading them, and
   // removes those of paks that have since changed. The cache needs HTTPS.
   async openCache() {
+    if (globalThis.caches) {
+      await Promise.all(RemotePaks.OLD_CACHES.map((name) => caches.delete(name).catch(() => {})));
+    }
     this.cache = globalThis.caches
       ? await caches.open(RemotePaks.CACHE).catch(() => null)
       : null;
