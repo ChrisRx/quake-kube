@@ -214,9 +214,9 @@ only change with a mod's version, so they're uploaded by hand rather than from C
 with `task docs:upload`, which reads the bucket's credentials from
 `~/.config/quake-kube/r2.env`.
 
-Pull requests that change the book get a preview of it on Cloudflare Pages, linked
-in a comment, unless they're from a fork. These don't include `/play/`, since R2
-only lets the game files be read from certain origins. The workflow needs the
+Pull requests that change the site get a preview of it on Cloudflare Pages, linked
+in a comment, unless they're from a fork. These include `/play/`, since R2's CORS
+policy allows `https://*.quake-kube-docs.pages.dev`. The workflow needs the
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets, and a Pages project
 named `quake-kube-docs`.
 

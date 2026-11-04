@@ -1,6 +1,6 @@
-# Deploys the book to Cloudflare Pages for each pull request that changes it, since GitHub Pages
-# only has the one site. The browser preview at /play isn't included, since R2 only lets its game
-# files be read from certain origins.
+# Deploys the docs site, with the browser preview at /play, to Cloudflare Pages for each pull
+# request that changes it, since GitHub Pages only has the one site. R2's CORS policy lets
+# https://*.quake-kube-docs.pages.dev read the preview's game files.
 name: Preview docs
 
 on:
@@ -8,8 +8,15 @@ on:
     paths:
       - ".github/workflows/preview-docs.yaml"
       - "Taskfile.yml"
+      - "flake.lock"
+      - "flake.nix"
+      - "controllers/static/**"
       - "docs/**"
+      - "hack/k3d/presets.yaml"
       - "hack/mdbook-pikchr/**"
+      - "hack/play-site/**"
+      - "internal/quake/content/**"
+      - "nix/**"
 
 permissions:
   contents: read
@@ -29,8 +36,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v23
+      # Like publish-docs.yaml, so the web client is only rebuilt when it changes.
+      - uses: cachix/cachix-action@v16
+        with:
+          name: quake-kube
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          pushFilter: '(-content-[^/]*$|\.tar\.gz$|-layer$|\.zip$|\.pk3$|-source$)'
       # Builds with the flake's CI shell, so with the same mdbook as development.
-      - run: nix develop .#ci --command task docs
+      - run: nix develop .#ci --command task docs:site
 
       - name: Deploy to Cloudflare Pages
         id: deployment
@@ -47,4 +60,4 @@ jobs:
           SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none \
-            --body "Docs preview: $URL (from $SHA). The browser preview at /play isn't included."
+            --body "Docs preview: $URL (from $SHA). Browser preview: $URL/play/"
