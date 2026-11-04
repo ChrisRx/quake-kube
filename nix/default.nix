@@ -117,6 +117,7 @@ in
     # For hack/play-upload.sh.
     urban-terror-content = content.urban-terror;
     cpma-content = content.cpma;
+    openarena-content = content.openarena;
     # Images for this platform, e.g. for Tilt.
     server-image = native.images.server;
     controller-image = native.images.controller;

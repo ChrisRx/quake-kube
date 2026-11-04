@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Uploads the mods' files to R2 for the browser preview on the docs site, since they don't fit
-# on GitHub Pages (see hack/play-site). They only change with their versions.
+# Uploads the games' files to R2 for the browser preview on the docs site (see hack/play-site).
+# They don't all fit on GitHub Pages, and it doesn't reliably answer the Range requests they're
+# read with. They only change with their versions.
 #
 # Reads the bucket's credentials from ~/.config/quake-kube/r2.env, which sets R2_ACCOUNT_ID,
 # R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY.
@@ -24,5 +25,6 @@ upload() {
     --size-only --exclude 'quake-kube-profile*' --no-progress
 }
 
+upload openarena-content baseoa
 upload cpma-content cpma
 upload urban-terror-content q3ut4

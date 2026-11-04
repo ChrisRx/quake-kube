@@ -990,6 +990,8 @@
           }
 
           let stage = "Starting the game";
+          let mapLoaded = false;
+          let lastLine = "";
           // The engine reads files as it needs them from here on, which can be most of the wait.
           const showStage = () => {
             const size = remote?.bytes ?? 0;
@@ -1068,15 +1070,28 @@
             print: (text) => console.log(text),
             printErr: (text) => {
               console.warn(text);
+              // The last thing it says when it fails is that it can't write a crash log.
+              if (!text.startsWith("ERROR: couldn't open crashlog")) lastLine = text;
               // Only a local game says which map it's loading.
               const loadingMap = text.match(/^Server: (.+)$/)?.[1];
               if (loadingMap) stage = `Loading ${manage ? mapTitle(manage.settings.preset, loadingMap) : loadingMap}`;
               if (text.startsWith("CL_InitCGame:")) {
+                mapLoaded = true;
                 stopLoading();
                 if (!playing) showPause();
               }
             },
-            onExit: () => (location.href = `${root}/`),
+            onExit: () => {
+              // Quitting goes back to the servers, but a game that never got going says why,
+              // rather than looking like nothing happened.
+              if (mapLoaded) {
+                location.href = `${root}/`;
+                return;
+              }
+              stopLoading();
+              document.getElementById("loading-hint").textContent = "Reload the page to try again.";
+              showLoading("The game couldn't start", lastLine);
+            },
           });
           if (onDemand) {
             // The files of the server's other maps, for when it changes map.
