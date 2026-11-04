@@ -4,7 +4,8 @@
 //
 // Paks and the web client are linked rather than copied, since they're large, so copy the
 // output with links followed to publish it. A game given with --remote has its files hosted
-// elsewhere, which hack/play-upload.sh puts there, since they don't all fit on GitHub Pages.
+// elsewhere, which hack/play-upload.sh puts there, since they don't all fit on GitHub Pages and
+// it doesn't reliably answer the Range requests they're read with.
 package main
 
 import (

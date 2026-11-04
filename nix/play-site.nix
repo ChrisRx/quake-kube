@@ -1,6 +1,7 @@
-# The browser preview on the docs site (see hack/play-site). Its paks and web
-# client are links to their packages, so this stays small. OpenArena's are on
-# GitHub Pages, and hack/play-upload.sh puts the mods', which don't fit, on R2.
+# The browser preview on the docs site (see hack/play-site). Its web client is
+# a link to its package, so this stays small. The games' files are on R2, which
+# hack/play-upload.sh puts there: they don't all fit on GitHub Pages, and it
+# doesn't reliably answer the Range requests they're read with.
 {
   lib,
   buildGoApplication,
@@ -41,6 +42,7 @@ runCommand "quake-kube-play-site" { } ''
     --content ${openarena} \
     --content ${cpma} \
     --content ${urbanTerror} \
+    --remote baseoa=https://content.chrisrx.dev \
     --remote cpma=https://content.chrisrx.dev \
     --remote q3ut4=https://content.chrisrx.dev \
     --presets ${../hack/k3d/presets.yaml} \
