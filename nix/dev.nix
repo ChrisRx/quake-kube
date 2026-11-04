@@ -17,11 +17,20 @@ let
       locked = lock.nodes.${lock.nodes.root.inputs.${name}}.locked;
     in
     builtins.getFlake "github:${locked.owner}/${locked.repo}/${locked.rev}?narHash=${encode locked.narHash}";
+  quakeKube = import ./. {
+    nixpkgs = input "nixpkgs";
+    gomod2nix = input "gomod2nix";
+    crane = input "crane";
+    flocken = input "flocken";
+    system = builtins.currentSystem;
+  };
 in
-(import ./. {
-  nixpkgs = input "nixpkgs";
-  gomod2nix = input "gomod2nix";
-  crane = input "crane";
-  flocken = input "flocken";
-  system = builtins.currentSystem;
-}).packages
+quakeKube.packages
+// {
+  # For hack/profile.sh. They're large, so they aren't kept in the dev shell.
+  profile-python = quakeKube.pkgs.python3.withPackages (ps: [
+    ps.playwright
+    ps.pyyaml
+  ]);
+  profile-browsers = quakeKube.pkgs.playwright-driver.browsers;
+}
