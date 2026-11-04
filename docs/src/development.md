@@ -145,4 +145,6 @@ task test   # Go and Rust tests
 task lint   # golangci-lint, clippy, rustfmt and helm lint
 task crds   # regenerate the chart's CRDs after changing the controller's types
 task docs   # build this book
+task docs:site   # and the browser preview at /play, as published
+task docs:serve  # build those and serve them at http://127.0.0.1:3000/, press space to open the preview
 ```

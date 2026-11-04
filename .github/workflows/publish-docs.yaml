@@ -44,7 +44,7 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
           pushFilter: '(-content-[^/]*$|\.tar\.gz$|-layer$|\.zip$|\.pk3$|-source$)'
       # Builds with the flake's CI shell, so with the same mdbook as development.
-      - run: nix develop .#ci --command task docs
+      - run: nix develop .#ci --command task docs:site
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5

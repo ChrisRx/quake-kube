@@ -5,6 +5,8 @@
 
 QuakeKube is a Kubernetes-ified version of [Quake 3](https://en.wikipedia.org/wiki/Quake_III_Arena). A controller runs dedicated servers for `QuakeServer` objects, along with a master server that lists them, and a web app creates servers and plays them in the browser with [ioquake3](https://github.com/ioquake/ioq3) built for the web with [Emscripten](https://emscripten.org/). It's installed with a Helm chart.
 
+[Try the web app in your browser](try-it.md), with nothing to install.
+
 ## Limitations
 
 This uses files from the Quake 3 Demo, which has four maps. Servers can download more maps and mods, such as [CPMA](https://playmorepromode.com) or [Urban Terror](https://www.urbanterror.info), when they start (see [Add Mods And Maps](add-custom-maps.md)). Mods have to ship QVMs to run in the browser, since it can't load native game libraries.

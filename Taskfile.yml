@@ -24,6 +24,29 @@ tasks:
     cmds:
       - mdbook build docs
 
+  docs:site:
+    desc: Build the docs as they're published, with the browser preview at /play
+    cmds:
+      - task: docs
+      # Links are followed, since the preview links its large files from the Nix store.
+      - |
+        site=$(nix build --impure -f nix/dev.nix play-site --no-link --print-out-paths)
+        rm -rf docs/book/play
+        cp -rL --no-preserve=mode "$site" docs/book/play
+
+  docs:upload:
+    desc: Upload the content the browser preview hosts on R2, which only changes with its version
+    cmds:
+      - hack/play-upload.sh
+
+  docs:serve:
+    desc: Build the docs with the browser preview, and serve them at http://127.0.0.1:3000/
+    # Pressing space opens the preview, so the server needs the terminal.
+    interactive: true
+    cmds:
+      - task: docs:site
+      - go run ./hack/play-site --serve docs/book
+
   chart:package:
     desc: Package the Helm chart, with the version in chart/Chart.yaml
     cmds:
