@@ -26,8 +26,8 @@ says why, such as an image that can't be pulled (see
 
 ![The New Server dialog, with fields for name, game, mode, bots and bot skill, a grid of map pictures numbered in the order they were picked, fields for the frag, time and capture limits and max players, and Copy Link, Cancel and Create buttons.](images/create-server.png)
 
-- **Name**: up to 64 characters, shown in the list and in server browsers. Servers
-  can share a name.
+- **Name**: up to 64 characters, shown in the list and in server browsers. Blank
+  uses Friday Night, and servers can share a name.
 - **Game**: one of the [games](games.md) the gateway offers, each with its own
   modes.
 - **Bots**: how many players to fill the server up to, from 0 to 16. They leave as
