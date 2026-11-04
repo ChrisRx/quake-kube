@@ -7,6 +7,14 @@ QuakeKube is installed with its Helm chart, which deploys:
 - the gateway, which serves the web app, where people create servers and play
   in the browser
 
+## Requirements
+
+- A Kubernetes cluster with x86_64 or aarch64 nodes. Most games use content
+  images, which need Kubernetes 1.35, or 1.33 with the `ImageVolume` feature gate.
+  Older clusters only offer Quake 3 with the demo's four maps.
+- [Helm](https://helm.sh/) 3.8 or newer, for charts in OCI registries.
+- A browser with WebAssembly and WebGL, or a native Quake 3 client.
+
 ## Install
 
 The chart is published to GitHub's container registry and works without any
@@ -17,20 +25,16 @@ helm install quake-kube oci://ghcr.io/chrisrx/quake-kube \
   --namespace quake-kube --create-namespace
 ```
 
-The chart is published from every change to the main branch, and deploys the
-newest images. `helm upgrade` with the same command updates an install to the
-newest chart and images.
-
 Then reach the web app through a port-forward:
 
 ```shell
 kubectl --namespace quake-kube port-forward service/quake-kube-gateway 8080:80
 ```
 
-Open `http://localhost:8080`, pick a game, mode and map under **New server**,
-and create it. Once it's ready, **Play** joins it in the browser. The games are
-the Quake 3 demo, and on Kubernetes 1.35 and later, Urban Terror and CPMA (see
-[Add Mods And Maps](add-custom-maps.md#presets)).
+Open `http://localhost:8080`, press **Create server**, pick a game, mode and maps,
+and create it. Once it's ready, **Play** joins it in the browser. See
+[Using The Web App](web-app.md) for the rest, and [Games](games.md) for what's
+offered.
 
 The game servers use the files from the Quake 3 demo, which are covered by the
 [Quake 3 demo EULA](https://github.com/ChrisRx/quake-kube/blob/main/internal/quake/server/EULA.txt).
@@ -51,18 +55,8 @@ Any Quake 3 client can join a server at the address in its status:
 kubectl get quakeservers --all-namespaces
 ```
 
-The controller's master server lists every server that has an address, so
-clients can find them in their server browser instead. Find its address with:
-
-```shell
-kubectl --namespace quake-kube get service quake-kube-master
-```
-
-and set it as a master server from the client's console:
-
-```
-seta sv_master1 "<master address>"
-```
+or find it through the controller's master server. See
+[Exposing Game Servers](networking.md) for both.
 
 ## Publish the web app
 
@@ -123,10 +117,11 @@ gateway replica, set `gateway.webtransport.tls.secretName` to a certificate
 browsers trust, since each replica would otherwise have its own.
 
 By default, anyone who can reach the web app can create up to
-`gateway.maxServers` servers, and delete the ones created there. To sign people
-in, e.g. with Google Cloud's Identity-Aware Proxy, and give servers owners, see
-[Authentication](authentication.md). Setting `gateway.maxServers` to 0 turns
-creating servers off.
+`gateway.maxServers` servers, and change or delete the ones created there. To
+sign people in, e.g. with Google Cloud's Identity-Aware Proxy, and give servers
+owners, see [Authentication](authentication.md). Setting `gateway.maxServers` to
+0 turns creating servers off. See [Security](security.md) for the rest of what to
+know before publishing it.
 
 The chart can also route to the web app with Gateway API instead of an
 ingress, with `gateway.httpRoute`.
@@ -158,6 +153,23 @@ kubectl get quakeservers
 See [Configuration](configuration.md) for the rest of the spec, and
 [Add Mods And Maps](add-custom-maps.md) for running mods. Mods' content images
 need Kubernetes 1.35, or 1.33 with the `ImageVolume` feature gate.
+
+## Upgrade
+
+There are no tagged releases. The chart is published from every change to the
+main branch, and deploys the newest images. To update an install to them:
+
+```shell
+helm upgrade quake-kube oci://ghcr.io/chrisrx/quake-kube \
+  --namespace quake-kube --values values.yaml
+```
+
+leaving out `--values` if you don't have any. Helm resets anything set with
+`--set` on an earlier install unless it's set again.
+
+This restarts the controller and gateway, and updates the CRD. Running game
+servers keep their image until their pods are replaced, so they aren't interrupted.
+A server gets the new image the next time it's created or switches games.
 
 ## Uninstall
 

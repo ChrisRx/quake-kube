@@ -4,13 +4,22 @@
 
 - [Getting Started](getting-started.md)
 
+- [Using The Web App](web-app.md)
+
+- [Games](games.md)
+
 - [How It Works](how-it-works.md)
 
 - [Configuration](configuration.md)
+  - [QuakeServer Reference](quakeserver-reference.md)
   - [Add Bots](add-bots.md)
   - [Setting A Password](setting-a-password.md)
   - [Add Mods And Maps](add-custom-maps.md)
+  - [Exposing Game Servers](networking.md)
   - [Authentication](authentication.md)
+  - [Security](security.md)
+
+- [Monitoring And Troubleshooting](troubleshooting.md)
 
 - [Development](development.md)
 

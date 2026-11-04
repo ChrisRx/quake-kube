@@ -80,9 +80,14 @@ rather than starting, e.g. because its image can't be pulled or its content
 fails to download, the status has a message saying why, which the web app
 shows.
 
-The controller also runs a Quake 3 master server. Game servers send it
-heartbeats, and it answers server browsers' queries with every ready server's
-external address.
+The controller also runs a Quake 3 master server, which answers server browsers'
+queries with every ready server's external address. It knows the servers from
+their QuakeServers rather than their heartbeats, since heartbeats come from
+addresses inside the cluster, so a heartbeat only tells it to check for changes
+sooner.
+
+The [QuakeServer Reference](quakeserver-reference.md#what-the-controller-creates)
+has the details of what it creates.
 
 ## Game servers
 
@@ -96,8 +101,8 @@ Each game server's pod runs the `q3` command from the game server image:
   counts down before shutting the server down.
 
 `q3 run` also serves, on port 8080, the server's content and info for browser
-clients, its maps' levelshots, its Prometheus metrics, and a gRPC health check
-for the pod's probes.
+clients, its maps' levelshots, its [Prometheus metrics](troubleshooting.md#metrics),
+and a gRPC health check for the pod's probes.
 
 When the configuration changes, `q3 run` changes the running server from its
 console where it can: a different map, game type, limits or bots reload the map,
@@ -168,12 +173,12 @@ start. Kubernetes deletes their pods and Services with them.
 
 Servers play a rotation of maps, moving to the next one after each match. The web
 app shows a picture of each map, its levelshot, which comes from the map's pak,
-with its title and the game types it's made for, from its arena file. For maps of games no server is running, the gateway runs a pod for
-each preset that assembles the preset's content like a game server's pod, with
-`q3 levelshots` serving thumbnails of the maps' levelshots and what their arena
-files say about them. The gateway keeps
-them in a ConfigMap, `quake-kube-levelshots-<preset>`, and only makes them again
-when the preset's content or maps change.
+with its title and the game types it's made for, from its arena file. For maps of
+games no server is running, the gateway runs a pod for each preset that assembles
+the preset's content like a game server's pod, with `q3 levelshots` serving
+thumbnails of the maps' levelshots and what their arena files say about them. The
+gateway keeps them in a ConfigMap, `quake-kube-levelshots-<preset>`, and only makes
+them again when the preset's content or maps change.
 
 ## Browser client
 
