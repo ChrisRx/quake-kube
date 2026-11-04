@@ -248,6 +248,44 @@
       #pause .settings p:empty {
         display: none;
       }
+      /* Clicks go through it, in case the game reaches its menu without loading a map. */
+      #loading {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font: 15px/1.4 system-ui, sans-serif;
+        color: #e8e2d9;
+        pointer-events: none;
+      }
+      #loading div {
+        display: grid;
+        gap: 8px;
+        width: min(340px, calc(100vw - 32px));
+        padding: 24px;
+        background: rgba(12, 11, 10, 0.92);
+        border: 1px solid #3a332c;
+        border-top: 2px solid #e0562b;
+      }
+      #loading p {
+        margin: 0;
+      }
+      #loading p:empty {
+        display: none;
+      }
+      #loading-title {
+        font: 600 13px/1.4 ui-monospace, monospace;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #e0562b;
+      }
+      #loading-detail {
+        font: 13px/1.4 ui-monospace, monospace;
+      }
+      #loading-hint {
+        font-size: 13px;
+        color: #a39a8f;
+      }
       #notice {
         position: fixed;
         top: 16px;
@@ -357,6 +395,13 @@
             <button type="submit" id="s-apply">Apply</button>
           </div>
         </form>
+      </div>
+    </div>
+    <div id="loading" role="status" hidden>
+      <div>
+        <p id="loading-title"></p>
+        <p id="loading-detail"></p>
+        <p id="loading-hint"></p>
       </div>
     </div>
     <div id="notice" role="status" hidden></div>
@@ -697,6 +742,22 @@
       const openCache = () =>
         window.caches ? caches.open("quake-kube-assets").catch(() => null) : Promise.resolve(null);
 
+      // Shows how far loading the game has come, in place of the form and over the canvas, which
+      // stays black until the map has loaded.
+      const loading = document.getElementById("loading");
+      function showLoading(title, detail = "") {
+        document.getElementById("loading-title").textContent = title;
+        document.getElementById("loading-detail").textContent = detail;
+        loading.hidden = false;
+      }
+      // Whether any game files had to be downloaded, rather than coming from the browser's cache.
+      let downloaded = false;
+      // Only when it's slow for that reason, so it doesn't promise a wait that isn't coming.
+      function showLoadingHint() {
+        document.getElementById("loading-hint").textContent =
+          "The first load takes a minute or so. Game files are saved in your browser, so it's quicker next time.";
+      }
+
       // Calls onProgress with each part's size as it arrives.
       async function loadAsset(asset, onProgress) {
         const cache = await openCache();
@@ -706,6 +767,7 @@
           onProgress(asset.compressed);
           return data;
         }
+        downloaded = true;
         const name = asset.name.replace(/(.+\/|)(.+?)$/, `$1${asset.checksum}-$2`);
         const response = await fetch(`${base}/assets/${name}`);
         if (!response.ok) {
@@ -884,8 +946,12 @@
         const button = form.querySelector("button");
         button.disabled = true;
 
+        const join = document.getElementById("join");
+        let watching, giveUp;
         try {
-          setStatus("Loading game files…");
+          setStatus("");
+          join.hidden = true;
+          showLoading("Loading game files");
           const { info, profile, paks, now, later } = await gameFiles();
           const map = (info.mapname || "").toLowerCase();
           let files, remote;
@@ -900,7 +966,8 @@
                 mergeFiles(profile.common, profile.maps?.[map]),
                 (bytes) => {
                   loaded += bytes;
-                  setStatus(`Loading game files… ${formatSize(loaded)} of ${formatSize(size)}`);
+                  if (remote.bytes > 0) showLoadingHint();
+                  showLoading("Loading game files", `${formatSize(loaded)} of ${formatSize(size)}`);
                 },
               );
               await done;
@@ -915,13 +982,30 @@
                 path: `/${asset.name}`,
                 data: await loadAsset(asset, (bytes) => {
                   loaded += bytes;
-                  setStatus(`Loading game files… ${formatSize(loaded)} of ${formatSize(size)}`);
+                  if (downloaded) showLoadingHint();
+                  showLoading("Loading game files", `${formatSize(loaded)} of ${formatSize(size)}`);
                 }),
               })),
             );
           }
 
-          setStatus("Starting…");
+          let stage = "Starting the game";
+          // The engine reads files as it needs them from here on, which can be most of the wait.
+          const showStage = () => {
+            const size = remote?.bytes ?? 0;
+            if (size > 0) showLoadingHint();
+            showLoading(stage, size > 0 ? `${formatSize(size)} of game files downloaded` : "");
+          };
+          showStage();
+          watching = setInterval(showStage, 500);
+          // Gives up on showing this, in case the game never loads a map, like when it can't
+          // connect. It shows its own error at its menu then.
+          giveUp = setTimeout(() => stopLoading(), 3 * 60 * 1000);
+          const stopLoading = () => {
+            clearInterval(watching);
+            clearTimeout(giveUp);
+            loading.hidden = true;
+          };
           const args = [
             // A local game has no one to talk to.
             "+set", "net_enabled", preview ? "0" : "1",
@@ -954,7 +1038,7 @@
 
           const client = onDemand ? `${root}/client/jspi` : `${root}/client`;
           const { default: ioquake3 } = await import(`${client}/ioquake3.js?v=${clientVersion}`);
-          document.getElementById("join").remove();
+          join.remove();
           let started;
           const engineStarted = new Promise((resolve) => (started = resolve));
           // The maps whose files the game has, when it doesn't read files as it needs them.
@@ -984,7 +1068,13 @@
             print: (text) => console.log(text),
             printErr: (text) => {
               console.warn(text);
-              if (!playing && text.startsWith("CL_InitCGame:")) showPause();
+              // Only a local game says which map it's loading.
+              const loadingMap = text.match(/^Server: (.+)$/)?.[1];
+              if (loadingMap) stage = `Loading ${manage ? mapTitle(manage.settings.preset, loadingMap) : loadingMap}`;
+              if (text.startsWith("CL_InitCGame:")) {
+                stopLoading();
+                if (!playing) showPause();
+              }
             },
             onExit: () => (location.href = `${root}/`),
           });
@@ -1012,8 +1102,18 @@
             }
           }
         } catch (error) {
-          setStatus(error.message);
-          button.disabled = false;
+          clearInterval(watching);
+          clearTimeout(giveUp);
+          // Once the engine has started, the form is gone and the page has to be reloaded.
+          if (join.isConnected) {
+            loading.hidden = true;
+            join.hidden = false;
+            setStatus(error.message);
+            button.disabled = false;
+          } else {
+            document.getElementById("loading-hint").textContent = "Reload the page to try again.";
+            showLoading("The game couldn't start", error.message);
+          }
         }
       });
     </script>
