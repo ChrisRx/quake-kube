@@ -108,6 +108,15 @@ in
     default = native.q3;
     inherit (native) q3 ioq3ded controller;
     web-client = webClient;
+    # The preview on the docs site.
+    play-site = pkgs.callPackage ./play-site.nix {
+      inherit webClient;
+      inherit (content) openarena cpma;
+      urbanTerror = content.urban-terror;
+    };
+    # For hack/play-upload.sh.
+    urban-terror-content = content.urban-terror;
+    cpma-content = content.cpma;
     # Images for this platform, e.g. for Tilt.
     server-image = native.images.server;
     controller-image = native.images.controller;

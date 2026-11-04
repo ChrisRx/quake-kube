@@ -3,10 +3,12 @@
 * [ioquake/ioq3](https://github.com/ioquake/ioq3) - The community supported version of Quake 3 used for the dedicated server and the browser client. It is licensed under the GPLv2.
 * [inolen/quakejs](https://github.com/inolen/quakejs) - The really awesome QuakeJS project, which was the original browser client and showed it could be done.
 * [begleysm/quakejs](https://github.com/begleysm/quakejs) - Information in the README.md (very helpful) was used as a guide for setting up the original QuakeJS client.
-* [OpenArena](https://openarena.ws) - Its "major" player model and voice stand in for CPMA's default player model, which is only in the full game, and its textures and models stand in for the full game's in maps and mods. It is licensed under the GPLv2.
+* [OpenArena](https://openarena.ws) - Its "major" player model and voice stand in for CPMA's default player model, which is only in the full game, and its textures and models stand in for the full game's in maps and mods. Its game and the [OpenArena Community Mappack](https://github.com/NeonKnightOA/oacmpvol1) are what the [browser preview](try-it.md) runs. It is licensed under the GPLv2.
 * [Missing textures pack](http://download.tuxfamily.org/openarena/files/pk3/missingtextures/) - Gábor Udvari's replacements for missing Quake 3 textures, made for OpenArena. A few stand in for the full game's in community maps. It is licensed under the GPLv2.
 * [q3a2oa textures, version 4](http://download.tuxfamily.org/openarena/files/pk3/q3a2oa/) - Jack Thompson's placeholders for Quake 3 textures, each a block of its average color. They stand in where nothing better has been found. It is licensed under the GPLv2.
 * The rest of the community maps' stand-ins were made for QuakeKube: some generated from scratch, like the lava's bubbles in ChiropteraTA, and one adding rust to OpenArena's `dirty_pewter_big`. Their scripts are in `content/quake3-maps/standins/generated`, and how each stand-in was chosen is recorded in `content/quake3-maps/standins/decisions.jsonl`.
+* [CPMA](https://playmorepromode.com) - Challenge ProMode Arena, by the CPMA team, which the [browser preview](try-it.md) offers.
+* [Urban Terror](https://www.urbanterror.info) - By FrozenSand, which the [browser preview](try-it.md) offers.
 * [Ultra Freeze Tag](https://lvlworld.com/mod/id:39) - By Neil "haste" Toronto, built on Darrell Bircsak's Freeze Tag.
 * [DeFRaG](https://q3defrag.org) - The trick jumping and racing mod, by the DeFRaG team.
 * [joz3d.net](http://www.joz3d.net/html/q3console.html) - Useful information about configuration values.

@@ -1,5 +1,7 @@
 - [Introduction](README.md)
 
+- [Try It In Your Browser](try-it.md)
+
 - [Getting Started](getting-started.md)
 
 - [How It Works](how-it-works.md)

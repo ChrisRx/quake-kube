@@ -478,7 +478,7 @@
       <dialog id="create" aria-labelledby="create-title">
         <h2 id="create-title">New server</h2>
         <form id="create-form">
-          <label>Name <input name="name" required maxlength="64" placeholder="Friday Night"></label>
+          <label>Name <input name="name" required maxlength="64" placeholder="Friday Night" autocomplete="off"></label>
           <label>Game <select name="preset" id="presets"></select></label>
           <label>Mode <select name="gameType" id="game-types"></select></label>
           <label id="bots">Bots <input name="bots" type="number" min="0" max="16" value="2" inputmode="numeric"></label>
@@ -556,6 +556,10 @@
 
     <script src="/static/maps.js"></script>
     <script>
+      // The preview on the docs site, which has no gateway (see static/preview.js).
+      const preview = globalThis.preview;
+      const root = preview?.root ?? "";
+
       const serversEl = document.getElementById("servers");
       const template = document.getElementById("server-template");
       const panelTemplate = document.getElementById("panel-template");
@@ -621,7 +625,7 @@
         el.querySelector(".name").replaceChildren(...colored(s.hostname || s.name));
         const details = el.querySelector(".details");
         if (!s.ready) {
-          details.append(detail("status", failed ? "failed" : "starting"));
+          details.append(detail("status", failed ? "failed" : (s.phase ?? "starting")));
         } else {
           if (s.game) details.append(detail("game", s.game));
           if (s.map) {
@@ -647,7 +651,7 @@
         problem.textContent = s.message || "";
 
         const play = el.querySelector(".play");
-        play.href = `/play/${s.namespace}/${s.name}/`;
+        play.href = preview?.playUrl(s) ?? `/play/${s.namespace}/${s.name}/`;
         play.classList.toggle("disabled", !s.ready || s.map == null);
         const edit = el.querySelector(".edit");
         edit.hidden = !s.settings || !config.presets.some((p) => p.name === s.settings.preset);
@@ -681,7 +685,11 @@
       // The levelshot is the picture of the map the game shows while loading it.
       function showLevelshot(panel, s) {
         const img = panel.querySelector(".levelshot");
-        const src = s.ready && s.map ? `/play/${s.namespace}/${s.name}/levelshots/${s.map.toLowerCase()}.jpg` : "";
+        const shot = (map) =>
+          preview
+            ? `${root}/api/presets/${encodeURIComponent(s.settings.preset)}/levelshots/${map}.jpg`
+            : `/play/${s.namespace}/${s.name}/levelshots/${map}.jpg`;
+        const src = s.ready && s.map ? shot(s.map.toLowerCase()) : "";
         if (img.dataset.src === src) return;
         img.dataset.src = src;
         panel.classList.add("no-shot");
@@ -699,7 +707,11 @@
         const table = panel.querySelector(".scores");
         if (!s.ready) {
           table.hidden = true;
-          note.textContent = s.message ? "The server isn't running." : "The server is starting.";
+          note.textContent = s.message
+            ? "The server isn't running."
+            : s.phase === "terminating"
+              ? "The server is stopping."
+              : "The server is starting.";
           return;
         }
         let status;
@@ -790,7 +802,7 @@
 
       // Offers the chosen game's modes and maps.
       const picker = new MapPicker(document.getElementById("map-picker"), {
-        levelshot: (preset, map) => `/api/presets/${encodeURIComponent(preset)}/levelshots/${map.toLowerCase()}.jpg`,
+        levelshot: (preset, map) => `${root}/api/presets/${encodeURIComponent(preset)}/levelshots/${map.toLowerCase()}.jpg`,
       });
       document.getElementById("game-types").addEventListener("change", (e) => picker.setGameType(e.target.value));
 
@@ -831,7 +843,7 @@
 
       // A link to the dialog with a game, mode and maps picked, for sharing a rotation.
       function dialogLink() {
-        const url = new URL("/", location.href);
+        const url = new URL(`${root}/`, location.href);
         url.searchParams.set("preset", document.getElementById("presets").value);
         url.searchParams.set("mode", document.getElementById("game-types").value);
         url.searchParams.set("maps", picker.value.join(","));

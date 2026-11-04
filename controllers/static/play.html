@@ -264,6 +264,11 @@
       }
     </style>
     <script>
+      // The preview on the docs site, which has no gateway (see static/preview.js).
+      const preview = globalThis.preview;
+      const root = preview?.root ?? "";
+      const baseGame = preview?.baseGame ?? "baseq3";
+
       const server = {
         namespace: "{{NAMESPACE}}",
         name: "{{NAME}}",
@@ -438,7 +443,7 @@
         else await document.documentElement.requestFullscreen().catch(() => {});
         resume();
       });
-      document.getElementById("leave").addEventListener("click", () => (location.href = "/"));
+      document.getElementById("leave").addEventListener("click", () => (location.href = `${root}/`));
       // While paused, keys don't reach the game, except Esc, which opens the game's menu.
       for (const type of ["keydown", "keypress", "keyup"]) {
         window.addEventListener(
@@ -470,7 +475,7 @@
       const picker =
         manage &&
         new MapPicker(document.getElementById("s-maps"), {
-          levelshot: (preset, map) => `/api/presets/${encodeURIComponent(preset)}/levelshots/${map.toLowerCase()}.jpg`,
+          levelshot: (preset, map) => `${root}/api/presets/${encodeURIComponent(preset)}/levelshots/${map.toLowerCase()}.jpg`,
         });
 
       // Presets' map pictures and names are made when the gateway starts, so until they're
@@ -610,6 +615,8 @@
             return;
           }
           manage.settings = data;
+          // A local game takes its settings when it starts.
+          if (preview) return rejoin();
           if (result.applied === "restart") {
             note.textContent = "Switching games. This page rejoins once the server's back.";
             return;
@@ -675,7 +682,7 @@
       }
 
       passwordInput.hidden = !server.needsPassword;
-      document.getElementById("eula-row").hidden = stored("demoEulaAccepted") === "yes";
+      document.getElementById("eula-row").hidden = preview || stored("demoEulaAccepted") === "yes";
 
       const MB = 1e6;
       const formatSize = (bytes) => `${Math.max(1, Math.round(bytes / MB)).toLocaleString()} MB`;
@@ -736,7 +743,7 @@
             .catch(() => null),
         ]);
         // A server running a mod reports the mod's directory as its game.
-        const gameDirs = ["baseq3", info.game].filter(Boolean);
+        const gameDirs = [baseGame, info.game].filter(Boolean);
         const map = (info.mapname || "").toLowerCase();
         const assets = manifest.filter((asset) => gameDirs.includes(asset.name.split("/")[0]));
         // Whether a map reads from a map's pak. The renderer reads every pak's shader scripts,
@@ -809,7 +816,7 @@
         rejoining = JSON.parse(sessionStorage.getItem("rejoin"));
         sessionStorage.removeItem("rejoin");
       } catch {}
-      if (rejoining && stored("demoEulaAccepted") === "yes") {
+      if (rejoining && (preview || stored("demoEulaAccepted") === "yes")) {
         passwordInput.value = rejoining.password || "";
         waitForServer(rejoining.waitFor).then((ready) => {
           document.getElementById("join").classList.remove("waiting");
@@ -847,11 +854,18 @@
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        if (stored("demoEulaAccepted") !== "yes" && !eulaInput.checked) {
-          setStatus("Agree to the demo license to download the game files.");
-          return;
+        if (preview) {
+          if (!(await preview.claim())) {
+            setStatus("This server is already open in another tab.");
+            return;
+          }
+        } else {
+          if (stored("demoEulaAccepted") !== "yes" && !eulaInput.checked) {
+            setStatus("Agree to the demo license to download the game files.");
+            return;
+          }
+          store("demoEulaAccepted", "yes");
         }
-        store("demoEulaAccepted", "yes");
         const playerName = nameInput.value.trim() || "UnnamedPlayer";
         store("playerName", playerName);
         store("voiceChat", voiceInput.checked ? "yes" : "no");
@@ -909,13 +923,14 @@
 
           setStatus("Starting…");
           const args = [
-            "+set", "net_enabled", "1",
+            // A local game has no one to talk to.
+            "+set", "net_enabled", preview ? "0" : "1",
             "+set", "r_mode", "-2",
             // The page has the full screen button, since the canvas alone in full screen
             // hides the page's menus.
             "+set", "r_fullscreen", "0",
             "+set", "cl_motd", "0",
-            "+set", "com_basegame", "baseq3",
+            "+set", "com_basegame", baseGame,
             "+name", playerName,
           ];
           if (info.game) {
@@ -925,13 +940,19 @@
             args.push("+set", "password", passwordInput.value);
           }
           if (!voice) {
-            args.push("+set", "s_alCapture", "0");
+            // The engine captures with OpenAL or SDL, whichever it's using for sound.
+            args.push("+set", "s_alCapture", "0", "+set", "s_sdlCapture", "0");
           }
-          // GameSocket decides where traffic goes, so any address works here except localhost,
-          // which the engine treats as a server of its own.
-          args.push("+connect", `${server.name}.${server.namespace}`);
+          if (preview) {
+            args.push(...preview.launchArgs());
+            files.push(preview.configFile(), ...(await preview.looseFiles()));
+          } else {
+            // GameSocket decides where traffic goes, so any address works here except localhost,
+            // which the engine treats as a server of its own.
+            args.push("+connect", `${server.name}.${server.namespace}`);
+          }
 
-          const client = onDemand ? "/client/jspi" : "/client";
+          const client = onDemand ? `${root}/client/jspi` : `${root}/client`;
           const { default: ioquake3 } = await import(`${client}/ioquake3.js?v=${clientVersion}`);
           document.getElementById("join").remove();
           let started;
@@ -965,7 +986,7 @@
               console.warn(text);
               if (!playing && text.startsWith("CL_InitCGame:")) showPause();
             },
-            onExit: () => (location.href = "/"),
+            onExit: () => (location.href = `${root}/`),
           });
           if (onDemand) {
             // The files of the server's other maps, for when it changes map.

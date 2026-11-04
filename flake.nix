@@ -58,6 +58,7 @@
           "ioq3ded"
           "controller"
           "web-client"
+          "play-site"
           "server-image"
           "controller-image"
           "urban-terror-image"
