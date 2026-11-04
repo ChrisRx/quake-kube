@@ -27,10 +27,12 @@ let
 in
 quakeKube.packages
 // {
-  # For hack/profile.sh. They're large, so they aren't kept in the dev shell.
+  # For hack/profile.sh and hack/screenshots.sh. They're large, so they aren't kept in the dev
+  # shell.
   profile-python = quakeKube.pkgs.python3.withPackages (ps: [
     ps.playwright
     ps.pyyaml
   ]);
   profile-browsers = quakeKube.pkgs.playwright-driver.browsers;
+  screenshots-magick = quakeKube.pkgs.imagemagick;
 }

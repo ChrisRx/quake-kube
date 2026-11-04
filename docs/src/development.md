@@ -265,5 +265,6 @@ task docs   # build this book
 task docs:site   # and the browser preview at /play, as published
 task docs:serve  # build those and serve them at http://127.0.0.1:3000/, press space to open the preview
 task docs:upload # upload the preview's game files to R2, after a mod's version changes
+task docs:screenshots  # retake the web app's screenshots in this book, after changing how it looks
 task content:profile PRESET=cpma CONTENT=cpma  # regenerate a content image's profile
 ```
