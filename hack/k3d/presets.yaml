@@ -126,6 +126,8 @@ gateway:
           - image: k3d-quake-kube-registry:5000/quake-kube-cpma:1.53
     - name: rocket-arena
       title: Rocket Arena
+      # RA3's maps have no .aas files, which bots need to navigate.
+      bots: false
       gameTypes:
         - {name: Clan Arena, cvars: {mode_start: CA}}
       # Rocket Arena 3's maps on CPMA, whose Clan Arena is Rocket Arena's
