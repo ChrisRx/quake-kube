@@ -480,7 +480,7 @@
       <dialog id="create" aria-labelledby="create-title">
         <h2 id="create-title">New server</h2>
         <form id="create-form">
-          <label>Name <input name="name" required maxlength="64" placeholder="Friday Night" autocomplete="off"></label>
+          <label>Name <input name="name" maxlength="64" placeholder="Friday Night" autocomplete="off"></label>
           <label>Game <select name="preset" id="presets"></select></label>
           <label>Mode <select name="gameType" id="game-types"></select></label>
           <label id="bots">Bots <input name="bots" type="number" min="0" max="16" value="2" inputmode="numeric"></label>
@@ -1004,6 +1004,8 @@
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const data = Object.fromEntries(new FormData(form));
+        // A blank name means the one the field suggests.
+        data.name = data.name.trim() || form.elements.namedItem("name").placeholder;
         data.maps = picker.value;
         if (data.maps.length === 0) {
           document.getElementById("create-error").textContent = "Pick at least one map.";
