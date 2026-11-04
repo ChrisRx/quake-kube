@@ -1,0 +1,50 @@
+# Deploys the book to Cloudflare Pages for each pull request that changes it, since GitHub Pages
+# only has the one site. The browser preview at /play isn't included, since R2 only lets its game
+# files be read from certain origins.
+name: Preview docs
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/preview-docs.yaml"
+      - "Taskfile.yml"
+      - "docs/**"
+      - "hack/mdbook-pikchr/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# Only the pull request's latest commit matters.
+concurrency:
+  group: preview-docs-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Forks don't get the secrets this needs.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      # Builds with the flake's CI shell, so with the same mdbook as development.
+      - run: nix develop .#ci --command task docs
+
+      - name: Deploy to Cloudflare Pages
+        id: deployment
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy docs/book --project-name=quake-kube-docs --branch=pr-${{ github.event.pull_request.number }}
+      - name: Comment with the link
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          URL: ${{ steps.deployment.outputs.pages-deployment-alias-url }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none \
+            --body "Docs preview: $URL (from $SHA). The browser preview at /play isn't included."
